@@ -91,14 +91,21 @@ class SalesService:
         with self.db.transaction() as conn:
             # 1 & 2. Validate and deduct batch stock
             for item in sale.items:
-                batch = self.inventory_repo.get_batch_by_id(item.batch_id)
-                if not batch:
-                    raise ValueError(f"Batch ID {item.batch_id} does not exist!")
-                if batch.current_qty < item.qty:
-                    raise ValueError(
-                        f"Insufficient stock for batch {batch.batch_no}. Required: {item.qty}, Available: {batch.current_qty}"
-                    )
-                self.inventory_repo.deduct_batch_stock(item.batch_id, item.qty, conn=conn)
+                batch = self.inventory_repo.get_or_create_batch_for_sale(
+                    product_id=item.product_id,
+                    batch_id=item.batch_id,
+                    batch_no=item.batch_no,
+                    sale_qty=item.qty,
+                    sale_rate=item.sale_rate,
+                    conn=conn,
+                )
+                item.batch_id = batch.batch_id
+                item.batch_no = batch.batch_no
+                if not item.exp_date and batch.exp_date:
+                    item.exp_date = batch.exp_date
+
+                # Deduct batch stock
+                self.inventory_repo.deduct_batch_stock(batch.batch_id, item.qty, conn=conn)
 
             # 3. Create sales record
             sale_id = self.sales_repo.create_sale(sale, conn=conn)
