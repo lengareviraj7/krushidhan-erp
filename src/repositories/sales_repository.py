@@ -13,21 +13,60 @@ class SalesRepository(BaseRepository):
     """Repository for managing sales billing, tax invoices, and sales returns."""
 
     def generate_next_invoice_no(self, prefix: str = "INV-") -> str:
-        """Generate sequential invoice number (e.g., INV-00001, INV-00002)."""
+        """Generate guaranteed unused sequential invoice number (e.g., INV-00001, INV-00002)."""
+        rows = self.db.fetch_all("SELECT invoice_no FROM sales WHERE invoice_no LIKE ?;", (f"{prefix}%",))
+        max_num = 0
+        for r in rows:
+            inv = str(r["invoice_no"])
+            num_str = inv[len(prefix):]
+            if num_str.isdigit():
+                max_num = max(max_num, int(num_str))
+
         row = self.db.fetch_one("SELECT MAX(sale_id) as last_id FROM sales;")
         last_id = row["last_id"] if row and row["last_id"] else 0
-        next_id = last_id + 1
-        return f"{prefix}{next_id:05d}"
+        next_num = max(max_num + 1, last_id + 1, 1)
+
+        while True:
+            candidate = f"{prefix}{next_num:05d}"
+            existing = self.db.fetch_one("SELECT 1 FROM sales WHERE invoice_no = ?;", (candidate,))
+            if not existing:
+                return candidate
+            next_num += 1
 
     def generate_next_return_no(self, prefix: str = "RET-") -> str:
         """Generate sequential sales return number."""
+        rows = self.db.fetch_all("SELECT return_no FROM sales_returns WHERE return_no LIKE ?;", (f"{prefix}%",))
+        max_num = 0
+        for r in rows:
+            ret = str(r["return_no"])
+            num_str = ret[len(prefix):]
+            if num_str.isdigit():
+                max_num = max(max_num, int(num_str))
+
         row = self.db.fetch_one("SELECT MAX(return_id) as last_id FROM sales_returns;")
         last_id = row["last_id"] if row and row["last_id"] else 0
-        next_id = last_id + 1
-        return f"{prefix}{next_id:05d}"
+        next_num = max(max_num + 1, last_id + 1, 1)
+
+        while True:
+            candidate = f"{prefix}{next_num:05d}"
+            existing = self.db.fetch_one("SELECT 1 FROM sales_returns WHERE return_no = ?;", (candidate,))
+            if not existing:
+                return candidate
+            next_num += 1
 
     def create_sale(self, sale: Sale, conn: Optional[sqlite3.Connection] = None) -> int:
         """Persist sales invoice header and line items."""
+        executor = conn if conn is not None else self.db.get_connection()
+        cursor = executor.cursor()
+
+        # Guarantee unique invoice number
+        if not sale.invoice_no:
+            sale.invoice_no = self.generate_next_invoice_no()
+        else:
+            cursor.execute("SELECT 1 FROM sales WHERE invoice_no = ?;", (sale.invoice_no,))
+            if cursor.fetchone():
+                sale.invoice_no = self.generate_next_invoice_no()
+
         sql_head = """
             INSERT INTO sales (
                 invoice_no, sale_date, customer_id, doctor_or_officer, payment_mode,
@@ -45,9 +84,7 @@ class SalesRepository(BaseRepository):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
 
-        executor = conn if conn is not None else self.db.get_connection()
         try:
-            cursor = executor.cursor()
             cursor.execute(
                 sql_head,
                 (
