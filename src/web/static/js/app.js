@@ -2567,35 +2567,47 @@ function openInvoicePreviewModal(salePayload, saleId) {
     if (tbody) {
         tbody.innerHTML = "";
         let sr = 1;
-        salePayload.items.forEach(item => {
+        (salePayload.items || []).forEach(item => {
             const tr = document.createElement("tr");
+            const rate = Number(item.sale_rate || item.rate || 0);
+            const qty = Number(item.qty || item.quantity || 1);
+            const total = Number(item.total_amount || (qty * rate) || 0);
+            const unit = item.unit_name || item.unit || 'Nos';
+            const compName = item.company_name || 'KRUSHIDHAN';
+            const batchNo = item.batch_no || '-';
+            const expDate = item.exp_date || '-';
+
             tr.innerHTML = `
                 <td style="text-align: center;">${sr++}</td>
-                <td><strong>${item.product_name}</strong></td>
-                <td style="text-align: center;">${item.company_name || 'KRUSHIDHAN'}</td>
+                <td><strong>${item.product_name || '-'}</strong></td>
+                <td style="text-align: center;">${compName}</td>
                 <td style="text-align: center;">-</td>
-                <td style="text-align: center;">${item.batch_no || '-'}</td>
-                <td style="text-align: center;">${item.exp_date || '-'}</td>
-                <td style="text-align: center;">${item.unit || 'Nos'}</td>
-                <td style="text-align: right;">₹${item.rate.toFixed(2)}</td>
-                <td style="text-align: right;"><strong>${item.quantity}</strong></td>
-                <td style="text-align: right; font-weight: 700;">₹${item.total_amount.toFixed(2)}</td>
+                <td style="text-align: center;">${batchNo}</td>
+                <td style="text-align: center;">${expDate}</td>
+                <td style="text-align: center;">${unit}</td>
+                <td style="text-align: right;">₹${rate.toFixed(2)}</td>
+                <td style="text-align: right;"><strong>${qty}</strong></td>
+                <td style="text-align: right; font-weight: 700;">₹${total.toFixed(2)}</td>
             `;
             tbody.appendChild(tr);
         });
     }
 
     // Totals calculations
-    const subtotal = salePayload.total_taxable || (salePayload.net_amount - ((salePayload.total_cgst || 0) + (salePayload.total_sgst || 0)));
-    const totalGst = (salePayload.total_cgst || 0) + (salePayload.total_sgst || 0);
+    const netAmount = Number(salePayload.net_amount || 0);
+    const totalGst = Number((salePayload.total_cgst || 0) + (salePayload.total_sgst || 0));
+    const subtotal = Number(salePayload.total_taxable || (netAmount - totalGst) || 0);
+    const roundOff = Number(salePayload.round_off || 0);
+    const paidAmount = Number(salePayload.paid_amount || 0);
+    const dueAmount = Number(salePayload.due_amount || 0);
 
     document.getElementById("inv-prev-subtotal").textContent = `₹${subtotal.toFixed(2)}`;
     document.getElementById("inv-prev-gst").textContent = `₹${totalGst.toFixed(2)}`;
-    document.getElementById("inv-prev-round").textContent = `₹${(salePayload.round_off || 0).toFixed(2)}`;
-    document.getElementById("inv-prev-net").textContent = `₹${salePayload.net_amount.toFixed(2)}`;
-    document.getElementById("inv-prev-paid").textContent = `₹${(salePayload.paid_amount || 0).toFixed(2)}`;
-    document.getElementById("inv-prev-balance").textContent = `₹${(salePayload.due_amount || 0).toFixed(2)}`;
-    document.getElementById("inv-prev-words").textContent = numberToIndianWords(salePayload.net_amount);
+    document.getElementById("inv-prev-round").textContent = `₹${roundOff.toFixed(2)}`;
+    document.getElementById("inv-prev-net").textContent = `₹${netAmount.toFixed(2)}`;
+    document.getElementById("inv-prev-paid").textContent = `₹${paidAmount.toFixed(2)}`;
+    document.getElementById("inv-prev-balance").textContent = `₹${dueAmount.toFixed(2)}`;
+    document.getElementById("inv-prev-words").textContent = numberToIndianWords(netAmount);
 
     modal.style.display = "flex";
 }
