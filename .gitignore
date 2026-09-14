@@ -16,3 +16,4 @@ htmlcov/
 
 # SQLite runtime files (keep seed database template if needed)
 data/backups/
+.vercel
