@@ -29,8 +29,27 @@ class SystemRepository(BaseRepository):
         return User(**dict(row)) if row else None
 
     def list_users(self) -> List[User]:
-        rows = self.db.fetch_all("SELECT user_id, username, full_name, role, is_active, created_at FROM users;")
+        rows = self.db.fetch_all("SELECT user_id, username, full_name, role, is_active, created_at FROM users ORDER BY user_id ASC;")
         return [User(**dict(r)) for r in rows]
+
+    def update_user_password(self, user_id: int, password_hash: str) -> None:
+        sql = "UPDATE users SET password_hash = ? WHERE user_id = ?;"
+        with self.db.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, (password_hash, user_id))
+
+    def update_user_status(self, user_id: int, is_active: int) -> None:
+        sql = "UPDATE users SET is_active = ? WHERE user_id = ?;"
+        with self.db.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, (is_active, user_id))
+
+    def delete_user(self, user_id: int) -> None:
+        sql = "DELETE FROM users WHERE user_id = ?;"
+        with self.db.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, (user_id,))
+
 
     # ---------------- Company Profile ----------------
     def get_company_settings(self) -> CompanySettings:

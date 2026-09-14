@@ -1,6 +1,34 @@
 /*
   Offline Agri-Input Shop ERP - Client Application Logic
+  Secured with 256-Bit Cryptographic Session Tokens & RBAC
 */
+
+// Authentication State
+let currentUser = null;
+
+// Global Fetch Interceptor to inject Authorization Bearer Token
+const _originalFetch = window.fetch;
+window.fetch = async function(url, options = {}) {
+    const token = localStorage.getItem("krushidhan_auth_token");
+    const opt = options || {};
+    const headers = { ...(opt.headers || {}) };
+
+    if (token && typeof url === "string" && url.startsWith("/api/")) {
+        headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    try {
+        const res = await _originalFetch(url, { ...opt, headers });
+        if (res.status === 401 && typeof url === "string" && !url.includes("/api/auth/login")) {
+            console.warn("Unauthorized API call, redirecting to login portal:", url);
+            showLoginOverlay("सत्र संपले आहे. कृपया पुन्हा लॉगिन करा (Session expired, please login again)");
+        }
+        return res;
+    } catch (err) {
+        console.error("Network or API Fetch error:", err);
+        throw err;
+    }
+};
 
 // Global State
 let currentCart = [];
@@ -18,15 +46,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     initTabs();
     initKeyboardShortcuts();
     initDefaultDates();
+    
+    // Authenticate & Verify Session before loading sensitive ERP records
+    const isAuthed = await checkAuthState();
+    if (isAuthed) {
+        await bootstrapDashboard();
+    }
+});
+
+async function bootstrapDashboard() {
     await loadInitialLookups();
     await initPosBilling();
     loadInventory();
     loadDayBook();
-    loadProfitAndLoss();
+    if (currentUser && currentUser.role === "ADMIN") {
+        loadProfitAndLoss();
+        loadAuthUsers();
+    }
     loadSettings();
     loadFarmerStatusList();
     loadMasterTables();
-});
+}
+
 
 function initDefaultDates() {
     const today = new Date().toISOString().split("T")[0];
@@ -1262,3 +1303,341 @@ function filterPnLProducts() {
         </tr>
     `).join("");
 }
+
+// ============================================================
+// SECURITY, AUTHENTICATION & ACCESS CONTROL
+// ============================================================
+
+async function checkAuthState() {
+    const token = localStorage.getItem("krushidhan_auth_token");
+    if (!token) {
+        showLoginOverlay();
+        return false;
+    }
+
+    try {
+        const res = await _originalFetch("/api/auth/me", {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            currentUser = data.user;
+            hideLoginOverlay();
+            updateUserInterfaceForRole();
+            return true;
+        } else {
+            showLoginOverlay("Session expired. Please log in again.");
+            return false;
+        }
+    } catch (e) {
+        console.error("Auth check failed:", e);
+        showLoginOverlay();
+        return false;
+    }
+}
+
+function showLoginOverlay(errorMessage = "") {
+    const overlay = document.getElementById("login-screen-overlay");
+    if (overlay) {
+        overlay.style.display = "flex";
+    }
+    const errBox = document.getElementById("login-error-box");
+    if (errBox) {
+        if (errorMessage) {
+            errBox.textContent = errorMessage;
+            errBox.style.display = "block";
+        } else {
+            errBox.style.display = "none";
+        }
+    }
+    const usernameInput = document.getElementById("login-username");
+    if (usernameInput) {
+        setTimeout(() => usernameInput.focus(), 150);
+    }
+}
+
+function hideLoginOverlay() {
+    const overlay = document.getElementById("login-screen-overlay");
+    if (overlay) {
+        overlay.style.display = "none";
+    }
+}
+
+async function submitLogin() {
+    const usernameInput = document.getElementById("login-username");
+    const passwordInput = document.getElementById("login-password");
+    const btnSubmit = document.getElementById("btn-login-action");
+    const errBox = document.getElementById("login-error-box");
+
+    const username = usernameInput?.value.trim() || "";
+    const password = passwordInput?.value || "";
+
+    if (!username || !password) {
+        if (errBox) {
+            errBox.textContent = "कृपया User ID आणि Password दोन्ही टाका.";
+            errBox.style.display = "block";
+        }
+        return;
+    }
+
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "⏳ पडताळणी सुरू आहे...";
+    }
+    if (errBox) errBox.style.display = "none";
+
+    try {
+        const res = await _originalFetch("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success && data.token) {
+            localStorage.setItem("krushidhan_auth_token", data.token);
+            currentUser = data.user;
+            hideLoginOverlay();
+            updateUserInterfaceForRole();
+            if (passwordInput) passwordInput.value = "";
+            await bootstrapDashboard();
+        } else {
+            const msg = data.detail || "चुकीचा युझर आयडी किंवा पासवर्ड (Invalid User ID or Password)";
+            if (errBox) {
+                errBox.textContent = msg;
+                errBox.style.display = "block";
+            }
+        }
+    } catch (err) {
+        console.error("Login request error:", err);
+        if (errBox) {
+            errBox.textContent = "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा.";
+            errBox.style.display = "block";
+        }
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "🔒 सुरक्षित प्रवेश करा (Secure Login)";
+        }
+    }
+}
+
+function handleLogout() {
+    if (confirm("तुम्हाला नक्की लॉगआउट करायचे आहे का? (Do you want to log out?)")) {
+        localStorage.removeItem("krushidhan_auth_token");
+        currentUser = null;
+        showLoginOverlay("यशस्वीरित्या लॉगआउट केले. (Logged out successfully)");
+    }
+}
+
+function updateUserInterfaceForRole() {
+    if (!currentUser) return;
+
+    const nameEl = document.getElementById("user-display-name");
+    const roleEl = document.getElementById("user-display-role");
+    
+    if (nameEl) nameEl.textContent = currentUser.full_name || currentUser.username;
+    if (roleEl) {
+        roleEl.textContent = currentUser.role || "OPERATOR";
+        if (currentUser.role === "ADMIN") {
+            roleEl.className = "user-role-tag role-admin";
+        } else {
+            roleEl.className = "user-role-tag role-operator";
+        }
+    }
+
+    // Role Based Navigation Tabs and Elements
+    const pnlTab = document.querySelector('.nav-tab[data-tab="tab-pnl"]');
+    const settingsTab = document.querySelector('.nav-tab[data-tab="tab-settings"]');
+    const userMgmtCard = document.getElementById("settings-user-mgmt-card");
+
+    if (currentUser.role !== "ADMIN") {
+        if (pnlTab) pnlTab.style.display = "none";
+        if (userMgmtCard) userMgmtCard.style.display = "none";
+    } else {
+        if (pnlTab) pnlTab.style.display = "flex";
+        if (userMgmtCard) userMgmtCard.style.display = "block";
+    }
+}
+
+function togglePasswordVisibility(fieldId) {
+    const input = document.getElementById(fieldId);
+    if (!input) return;
+    input.type = (input.type === "password") ? "text" : "password";
+}
+
+// ----------------- Change Password Modal -----------------
+function openChangePasswordModal() {
+    document.getElementById("modal-change-password").style.display = "flex";
+    document.getElementById("pwd-old").value = "";
+    document.getElementById("pwd-new").value = "";
+    document.getElementById("pwd-confirm").value = "";
+}
+
+function closeChangePasswordModal() {
+    document.getElementById("modal-change-password").style.display = "none";
+}
+
+async function submitChangePassword() {
+    const oldPwd = document.getElementById("pwd-old").value;
+    const newPwd = document.getElementById("pwd-new").value;
+    const confirmPwd = document.getElementById("pwd-confirm").value;
+
+    if (newPwd !== confirmPwd) {
+        alert("नवीन पासवर्ड आणि पुष्टीकरण पासवर्ड जुळत नाहीत!");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/auth/change-password", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ old_password: oldPwd, new_password: newPwd })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert("✓ " + (data.message || "पासवर्ड यशस्वीरीत्या बदलला आहे!"));
+            closeChangePasswordModal();
+        } else {
+            alert("त्रुटी: " + (data.detail || "पासवर्ड बदलता आला नाही."));
+        }
+    } catch (e) {
+        alert("पासवर्ड बदलताना त्रुटी आली: " + e.message);
+    }
+}
+
+// ----------------- User Management (Admin Only) -----------------
+async function loadAuthUsers() {
+    if (!currentUser || currentUser.role !== "ADMIN") return;
+    const tbody = document.getElementById("auth-users-tbody");
+    if (!tbody) return;
+
+    try {
+        const res = await fetch("/api/auth/users");
+        if (!res.ok) return;
+        const users = await res.json();
+
+        if (!users || users.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No users registered yet.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = users.map(u => `
+            <tr>
+                <td><b>#${u.user_id}</b></td>
+                <td><b>${u.username}</b></td>
+                <td>${u.full_name || "-"}</td>
+                <td>
+                    <span class="user-role-tag ${u.role === 'ADMIN' ? 'role-admin' : 'role-operator'}">${u.role}</span>
+                </td>
+                <td>
+                    <span class="badge ${u.is_active ? 'badge-success' : 'badge-danger'}">${u.is_active ? 'सक्रिय (Active)' : 'निष्क्रिय (Disabled)'}</span>
+                </td>
+                <td class="text-center">
+                    ${u.user_id !== currentUser.user_id ? `
+                        <button class="btn btn-secondary btn-sm" onclick="toggleUserStatus(${u.user_id}, ${u.is_active})" style="padding: 3px 8px; font-size: 11px;">
+                            ${u.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                        <button class="btn btn-primary btn-sm" onclick="adminResetPassword(${u.user_id}, '${u.username}')" style="padding: 3px 8px; font-size: 11px;">
+                            🔑 Reset PIN
+                        </button>
+                    ` : '<span style="font-size:11px; color:#64748b;">(Current Account)</span>'}
+                </td>
+            </tr>
+        `).join("");
+    } catch (e) {
+        console.error("Failed to load auth users:", e);
+    }
+}
+
+function openCreateUserModal() {
+    document.getElementById("modal-create-user").style.display = "flex";
+    document.getElementById("new-user-username").value = "";
+    document.getElementById("new-user-fullname").value = "";
+    document.getElementById("new-user-password").value = "";
+    document.getElementById("new-user-role").value = "OPERATOR";
+}
+
+function closeCreateUserModal() {
+    document.getElementById("modal-create-user").style.display = "none";
+}
+
+async function submitCreateUser() {
+    const username = document.getElementById("new-user-username").value.trim();
+    const full_name = document.getElementById("new-user-fullname").value.trim();
+    const password = document.getElementById("new-user-password").value;
+    const role = document.getElementById("new-user-role").value;
+
+    if (!username || !password || !full_name) {
+        alert("सर्व माहिती भरणे आवश्यक आहे.");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/auth/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password, full_name, role })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert(`✓ User '${username}' यशस्वीरीत्या तयार केला!`);
+            closeCreateUserModal();
+            loadAuthUsers();
+        } else {
+            alert("त्रुटी: " + (data.detail || "User तयार करता आला नाही."));
+        }
+    } catch (e) {
+        alert("User तयार करताना त्रुटी आली: " + e.message);
+    }
+}
+
+async function toggleUserStatus(userId, currentStatus) {
+    const newStatus = !currentStatus;
+    const actionName = newStatus ? "सक्रिय (Activate)" : "निष्क्रिय (Deactivate)";
+    if (!confirm(`तुम्हाला या User ला ${actionName} करायचे आहे का?`)) return;
+
+    try {
+        const res = await fetch(`/api/auth/users/${userId}/status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ is_active: newStatus })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            loadAuthUsers();
+        } else {
+            alert(data.detail || "Status update failed");
+        }
+    } catch (e) {
+        alert("त्रुटी: " + e.message);
+    }
+}
+
+async function adminResetPassword(userId, username) {
+    const newPwd = prompt(`'${username}' या युझरसाठी नवीन पासवर्ड टाका (Enter new password):`);
+    if (!newPwd || newPwd.trim().length < 4) {
+        if (newPwd !== null) alert("पासवर्ड किमान 4 अक्षरांचा असावा.");
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/auth/users/${userId}/reset-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ new_password: newPwd.trim() })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert(`✓ '${username}' चा पासवर्ड बदलला आहे!`);
+        } else {
+            alert("त्रुटी: " + (data.detail || "Password reset failed"));
+        }
+    } catch (e) {
+        alert("त्रुटी: " + e.message);
+    }
+}
+

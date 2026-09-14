@@ -99,7 +99,8 @@ INSERT OR IGNORE INTO company_settings (
     'A4'
 );
 
--- 10. Default Admin User (Default PIN/Password: admin123, pre-hashed using SHA256/Bcrypt compatible fallback)
--- Password 'admin123' bcrypt hash: $2b$12$e8x/yUv2O5m3zK.wK0Y.DehZ0J7CjH8mB6u4E8q7G9k0V2.A1b2c3 or initial bootstrap hash
+-- 10. Default Admin User (Default Password: krushidhan@2026)
 INSERT OR IGNORE INTO users (user_id, username, password_hash, full_name, role, is_active) VALUES
-(1, 'admin', '$2b$12$K1r.5gCgO4X3N2M.9O7w7e6t3mO8g4u9v8c3x5b8a0z1y2x3w4v5u', 'Shop Owner / Admin', 'ADMIN', 1);
+(1, 'admin', '7adeac2dfbc21f07e8a90a6a84309007e8a77d04c9008d19d8758633ff8e3304', 'आकाश लेंगारे (Admin)', 'ADMIN', 1),
+(2, 'akash', '7adeac2dfbc21f07e8a90a6a84309007e8a77d04c9008d19d8758633ff8e3304', 'आकाश लेंगारे', 'ADMIN', 1);
+

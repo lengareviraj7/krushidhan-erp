@@ -6,11 +6,18 @@ from fastapi.testclient import TestClient
 from src.app import app
 from src.db.connection import get_db_manager
 from src.services.accounting_service import AccountingService
+from src.services.auth_service import AuthService
 
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    token = AuthService.create_access_token(
+        user_id=1,
+        username="admin",
+        full_name="आकाश लेंगारे (Admin)",
+        role="ADMIN",
+    )
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
 
 
 def test_pnl_service_calculation():

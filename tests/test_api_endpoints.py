@@ -1,21 +1,28 @@
 """
-Automated Test Suite for FastAPI REST API Endpoints.
+Automated Test Suite for FastAPI REST API Endpoints with Authentication.
 """
 import pytest
 from fastapi.testclient import TestClient
 from src.app import app
 from src.db.connection import DatabaseManager
+from src.services.auth_service import AuthService
 
 
 @pytest.fixture
 def client(tmp_path):
-    """Provides a TestClient connected to a test SQLite database."""
+    """Provides an authenticated TestClient connected to a test SQLite database."""
     test_db_path = tmp_path / "test_api_agri_erp.db"
     db_manager = DatabaseManager(db_path=test_db_path)
     db_manager.initialize_database(include_seed=True)
 
-    # Override get_db_manager dependency inside app
-    with TestClient(app) as test_client:
+    token = AuthService.create_access_token(
+        user_id=1,
+        username="admin",
+        full_name="आकाश लेंगारे (Admin)",
+        role="ADMIN",
+    )
+
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as test_client:
         yield test_client
 
 

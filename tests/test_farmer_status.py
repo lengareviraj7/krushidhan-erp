@@ -11,13 +11,24 @@ from src.repositories import InventoryRepository, MasterDataRepository
 from src.services import SalesService
 
 
+from src.services.auth_service import AuthService
+
+
 @pytest.fixture
 def client():
     db = get_db_manager()
     db.initialize_database(include_seed=True)
 
-    with TestClient(app) as test_client:
+    token = AuthService.create_access_token(
+        user_id=1,
+        username="admin",
+        full_name="आकाश लेंगारे (Admin)",
+        role="ADMIN",
+    )
+
+    with TestClient(app, headers={"Authorization": f"Bearer {token}"}) as test_client:
         yield test_client, db
+
 
 
 def test_farmer_status_and_ledger_endpoints(client):
