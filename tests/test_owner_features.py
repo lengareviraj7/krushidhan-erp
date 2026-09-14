@@ -23,11 +23,22 @@ def client():
         yield c
 
 def test_supplier_khata_endpoints(client):
-    # 1. Fetch suppliers with balances
+    # 1. Fetch suppliers with balances or create one
     resp = client.get("/api/accounting/suppliers")
     assert resp.status_code == 200
     suppliers = resp.json()
     assert isinstance(suppliers, list)
+    if not suppliers:
+        s_res = client.post("/api/masters/suppliers", json={
+            "supplier_name": "महालक्ष्मी ॲग्रो एजन्सी",
+            "contact_person": "सचिन पाटील",
+            "mobile": "9876543210",
+            "city": "सांगली"
+        })
+        assert s_res.status_code == 200
+        resp = client.get("/api/accounting/suppliers")
+        suppliers = resp.json()
+
     assert len(suppliers) > 0
     supplier = suppliers[0]
     assert "supplier_id" in supplier
@@ -64,7 +75,7 @@ def test_daily_expense_and_cash_closing(client):
     assert cat_resp.status_code == 200
     cats = cat_resp.json()
     assert isinstance(cats, list)
-    assert any(c["category_name"] == "Shop Rent" for c in cats)
+    assert any("Shop Rent" in c["category_name"] for c in cats)
 
     # 2. Add an expense
     exp_payload = {

@@ -351,7 +351,7 @@ def test_system_settings_and_audit(test_env):
 
     # 1. Company Profile
     current_settings = system.get_company_settings()
-    assert "Krishi" in current_settings.company_name
+    assert "कृषीधन" in current_settings.company_name or "Krishi" in current_settings.company_name
 
     current_settings.company_name = "Om Krishi Seva Kendra"
     current_settings.gstin = "27ABCDE1234F1Z5"

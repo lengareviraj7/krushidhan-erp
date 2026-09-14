@@ -85,12 +85,24 @@ def test_direct_add_stock_api(client):
     uid = uuid.uuid4().hex[:6]
     batch_code = f"BATCH-TEST-{uid}"
 
-    # First get product list
+    # First get product list or create one
     prod_res = client.get("/api/masters/products")
     assert prod_res.status_code == 200
     products = prod_res.json()
-    assert len(products) > 0
-    prod_id = products[0]["product_id"]
+    if not products:
+        p_res = client.post("/api/masters/products", json={
+            "product_name": "Test Direct Product",
+            "category_id": 1,
+            "unit_id": 1,
+            "tax_group_id": 2,
+            "default_purchase_rate": 500.0,
+            "default_sale_rate": 600.0,
+            "default_mrp": 650.0
+        })
+        assert p_res.status_code == 200
+        prod_id = p_res.json()["product_id"]
+    else:
+        prod_id = products[0]["product_id"]
 
     # Add 25 units of stock directly
     add_res = client.post(

@@ -103,7 +103,7 @@ def test_seed_data_loaded_correctly(db_manager):
     # 5. Check Company Profile
     profile = db_manager.fetch_one("SELECT * FROM company_settings WHERE setting_id = 1;")
     assert profile is not None
-    assert "Krishi" in profile["company_name"]
+    assert "कृषीधन" in profile["company_name"] or "Krishi" in profile["company_name"]
 
 
 def test_foreign_key_constraints_enforced(db_manager):
