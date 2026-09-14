@@ -69,10 +69,11 @@
                                 <label>Bill Date</label>
                                 <input type="date" id="pos-date" style="font-weight: 500;">
                             </div>
-                            <div class="form-group" style="flex: 1;">
+                            <div class="form-group autocomplete-wrapper" style="flex: 1;">
                                 <label>Farmer / Customer Name <span style="color:#ef4444;">*</span></label>
                                 <input type="text" id="pos-cust-name" list="pos-customer-datalist" placeholder="Type farmer name (e.g. Ramesh Patil)..." autocomplete="off" style="font-weight: 600;">
                                 <datalist id="pos-customer-datalist"></datalist>
+                                <div id="pos-cust-suggestions" class="autocomplete-results"></div>
                             </div>
                         </div>
                         <div class="form-row" style="margin-bottom: 0;">
@@ -88,6 +89,11 @@
                                 <label>Crop / Field Details</label>
                                 <input type="text" id="pos-cust-crop" placeholder="e.g. Sugarcane / Pomegranate / Onion">
                             </div>
+                        </div>
+                        <!-- Dynamic Customer Outstanding Due Status Banner -->
+                        <div id="pos-cust-status-banner" class="customer-status-banner" style="display: none;">
+                            <span id="pos-cust-status-text"></span>
+                            <button type="button" id="pos-cust-statement-btn" class="btn btn-outline-primary btn-sm" style="padding: 2px 8px; font-size: 11px; display: none;" onclick="viewSelectedFarmerStatement()">खाते वही (View Ledger)</button>
                         </div>
                     </div>
 

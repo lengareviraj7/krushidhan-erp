@@ -224,6 +224,104 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 2px var(--primary-light);
 }
 
+/* Autocomplete Suggestions Box */
+.autocomplete-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1.5px solid #15803d;
+  border-radius: 6px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 1050;
+  display: none;
+  margin-top: 2px;
+}
+
+.autocomplete-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s ease;
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.selected {
+  background: #f0fdf4;
+}
+
+.autocomplete-item-name {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.autocomplete-item-sub {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.autocomplete-item-due {
+  text-align: right;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.autocomplete-item-due.has-due {
+  color: #dc2626;
+}
+
+.autocomplete-item-due.no-due {
+  color: #16a34a;
+}
+
+/* Customer Due / Status Banner */
+.customer-status-banner {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+
+.customer-status-banner.has-due {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
+.customer-status-banner.no-due {
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+
+.customer-status-banner.new-cust {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}
+
 /* Buttons */
 .btn {
   padding: 7px 14px;

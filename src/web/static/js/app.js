@@ -185,22 +185,38 @@ async function refreshProductList() {
 }
 
 async function refreshCustomerList() {
-    const res = await fetch("/api/masters/customers");
-    allCustomers = await res.json();
-    
-    // Populate datalist for POS autocomplete
-    const datalist = document.getElementById("pos-customer-datalist");
-    if (datalist) {
-        datalist.innerHTML = allCustomers.map(c => 
-            `<option value="${c.customer_name}">${c.village ? c.village + ' - ' : ''}${c.mobile ? c.mobile + ' - ' : ''}₹${c.current_balance} Due</option>`
-        ).join("");
-    }
+    try {
+        const res = await fetch("/api/masters/customers");
+        allCustomers = await res.json();
+        
+        // Populate datalist for POS autocomplete
+        const datalist = document.getElementById("pos-customer-datalist");
+        if (datalist) {
+            datalist.innerHTML = allCustomers.map(c => {
+                const due = parseFloat(c.current_balance) || 0;
+                const dueStr = due > 0 ? ` [⚠️ बाकी: ₹${due.toFixed(2)}]` : ' [बाकी: ₹0.00]';
+                return `<option value="${c.customer_name}">${c.village ? c.village + ' • ' : ''}${c.mobile ? c.mobile + ' • ' : ''}${dueStr}</option>`;
+            }).join("");
+        }
 
-    // Populate accounts receipt dropdown
-    const accCustSelect = document.getElementById("acc-receipt-cust");
-    if (accCustSelect) {
-        accCustSelect.innerHTML = '<option value="">Select Farmer / Customer</option>' + 
-            allCustomers.map(c => `<option value="${c.customer_id}">${c.customer_name} (${c.village||'Local'}) - ₹${c.current_balance} Due</option>`).join("");
+        // Populate accounts receipt dropdown
+        const accCustSelect = document.getElementById("acc-receipt-cust");
+        if (accCustSelect) {
+            accCustSelect.innerHTML = '<option value="">Select Farmer / Customer</option>' + 
+                allCustomers.map(c => `<option value="${c.customer_id}">${c.customer_name} (${c.village||'Local'}) - ₹${c.current_balance} Due</option>`).join("");
+        }
+
+        // Re-check currently typed customer in POS if any
+        const custInput = document.getElementById("pos-cust-name");
+        if (custInput && custInput.value.trim()) {
+            const typed = custInput.value.trim();
+            const matched = allCustomers.find(c => c.customer_name.toLowerCase() === typed.toLowerCase());
+            if (typeof updateCustomerStatusBanner === "function") {
+                updateCustomerStatusBanner(matched, typed);
+            }
+        }
+    } catch (e) {
+        console.error("Error loading customers:", e);
     }
 }
 
@@ -226,12 +242,142 @@ function populateProductDropdown(elementId, products) {
 }
 
 // ----------------- POS Billing Tab -----------------
+let selectedPosFarmerId = null;
+
+function updateCustomerStatusBanner(matched, typedText) {
+    const statusBanner = document.getElementById("pos-cust-status-banner");
+    const statusText = document.getElementById("pos-cust-status-text");
+    const stmtBtn = document.getElementById("pos-cust-statement-btn");
+    if (!statusBanner || !statusText) return;
+
+    if (matched) {
+        selectedPosFarmerId = matched.customer_id;
+        const due = parseFloat(matched.current_balance) || 0;
+        statusBanner.style.display = "flex";
+        if (due > 0) {
+            statusBanner.className = "customer-status-banner has-due";
+            statusText.innerHTML = `⚠️ <strong>${matched.customer_name}</strong> (${matched.village || 'विसापूर'}) • मागील थकबाकी (Old Due): <span style="font-size: 13.5px; text-decoration: underline; color: #dc2626; font-weight: 800;">₹${due.toFixed(2)}</span>`;
+            if (stmtBtn) stmtBtn.style.display = "inline-flex";
+        } else {
+            statusBanner.className = "customer-status-banner no-due";
+            statusText.innerHTML = `✓ <strong>${matched.customer_name}</strong> (${matched.village || 'विसापूर'}) • मागील बाकी: <span style="color: #16a34a; font-weight: 800;">₹0.00 (खाते निरंक)</span>`;
+            if (stmtBtn) stmtBtn.style.display = "inline-flex";
+        }
+    } else if (typedText && typedText.length >= 2) {
+        selectedPosFarmerId = null;
+        statusBanner.style.display = "flex";
+        statusBanner.className = "customer-status-banner new-cust";
+        statusText.innerHTML = `✨ नवीन शेतकरी: "<strong>${typedText}</strong>" (पहिल्यांदा बिल करताना आपोआप नोंद होईल)`;
+        if (stmtBtn) stmtBtn.style.display = "none";
+    } else {
+        selectedPosFarmerId = null;
+        statusBanner.style.display = "none";
+        if (stmtBtn) stmtBtn.style.display = "none";
+    }
+}
+
+function viewSelectedFarmerStatement() {
+    if (selectedPosFarmerId && typeof openFarmerDetail === "function") {
+        openFarmerDetail(selectedPosFarmerId);
+    }
+}
+
+function setupCustomerAutocomplete() {
+    const custInput = document.getElementById("pos-cust-name");
+    const suggestionsBox = document.getElementById("pos-cust-suggestions");
+    if (!custInput || !suggestionsBox) return;
+
+    function renderSuggestions(query) {
+        if (!query || query.length < 1) {
+            suggestionsBox.style.display = "none";
+            suggestionsBox.innerHTML = "";
+            return;
+        }
+
+        const q = query.toLowerCase();
+        const matches = allCustomers.filter(c => 
+            (c.customer_name && c.customer_name.toLowerCase().includes(q)) ||
+            (c.mobile && c.mobile.includes(q)) ||
+            (c.village && c.village.toLowerCase().includes(q))
+        ).slice(0, 8);
+
+        if (matches.length === 0) {
+            suggestionsBox.innerHTML = `
+                <div style="padding: 10px 12px; font-size: 12px; color: #1e40af; background: #eff6ff;">
+                    ✨ <strong>"${query}"</strong> हा नवीन शेतकरी आहे. (बिल सेव्ह केल्यावर आपोआप सेव्ह होईल)
+                </div>
+            `;
+            suggestionsBox.style.display = "block";
+            return;
+        }
+
+        suggestionsBox.innerHTML = matches.map(c => {
+            const due = parseFloat(c.current_balance) || 0;
+            const dueClass = due > 0 ? 'has-due' : 'no-due';
+            const dueText = due > 0 ? `बाकी: ₹${due.toFixed(2)}` : 'बाकी: ₹0.00';
+            return `
+                <div class="autocomplete-item" data-id="${c.customer_id}" data-name="${c.customer_name}" data-mobile="${c.mobile || ''}" data-village="${c.village || ''}">
+                    <div>
+                        <div class="autocomplete-item-name">👨‍🌾 ${c.customer_name}</div>
+                        <div class="autocomplete-item-sub">📍 ${c.village || 'विसापूर'} ${c.mobile ? '• 📱 ' + c.mobile : ''}</div>
+                    </div>
+                    <div class="autocomplete-item-due ${dueClass}">
+                        ${dueText}
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        suggestionsBox.style.display = "block";
+
+        suggestionsBox.querySelectorAll(".autocomplete-item").forEach(item => {
+            item.addEventListener("click", () => {
+                const name = item.getAttribute("data-name");
+                const mobile = item.getAttribute("data-mobile");
+                const village = item.getAttribute("data-village");
+                const id = parseInt(item.getAttribute("data-id"));
+
+                custInput.value = name;
+                document.getElementById("pos-cust-mobile").value = mobile;
+                document.getElementById("pos-cust-village").value = village;
+
+                const matched = allCustomers.find(c => c.customer_id === id);
+                updateCustomerStatusBanner(matched, name);
+                suggestionsBox.style.display = "none";
+            });
+        });
+    }
+
+    custInput.addEventListener("input", (e) => {
+        const val = e.target.value.trim();
+        const matched = allCustomers.find(c => c.customer_name.toLowerCase() === val.toLowerCase());
+        if (matched) {
+            document.getElementById("pos-cust-mobile").value = matched.mobile || "";
+            document.getElementById("pos-cust-village").value = matched.village || "";
+        }
+        updateCustomerStatusBanner(matched, val);
+        renderSuggestions(val);
+    });
+
+    custInput.addEventListener("focus", (e) => {
+        const val = e.target.value.trim();
+        if (val) renderSuggestions(val);
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!custInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
+            suggestionsBox.style.display = "none";
+        }
+    });
+}
+
 async function initPosBilling() {
     // Set today's date
     const dateInput = document.getElementById("pos-date");
     if (dateInput) dateInput.value = new Date().toISOString().split("T")[0];
 
     await fetchNextInvoiceNo();
+    setupCustomerAutocomplete();
 
     // Event listener for product change -> fetch FEFO batches
     const prodSelect = document.getElementById("pos-item-product");
@@ -252,19 +398,6 @@ async function initPosBilling() {
                 batchSelect.innerHTML = batches.map((b, i) => 
                     `<option value="${b.batch_id}" data-qty="${b.current_qty}" data-rate="${b.sale_rate}" data-mrp="${b.mrp}" data-exp="${b.exp_date||''}" data-batchno="${b.batch_no}">${i === 0 ? '⭐ [FEFO] ' : ''}${b.batch_no} (Exp: ${b.exp_date||'N/A'}) - Qty: ${b.current_qty}</option>`
                 ).join("");
-            }
-        });
-    }
-
-    // Auto-detect typed farmer name and auto-fill mobile / village
-    const custInput = document.getElementById("pos-cust-name");
-    if (custInput) {
-        custInput.addEventListener("input", (e) => {
-            const typedName = e.target.value.trim().toLowerCase();
-            const matched = allCustomers.find(c => c.customer_name.toLowerCase() === typedName);
-            if (matched) {
-                document.getElementById("pos-cust-mobile").value = matched.mobile || "";
-                document.getElementById("pos-cust-village").value = matched.village || "";
             }
         });
     }
@@ -532,6 +665,15 @@ function resetPosCart() {
     document.getElementById("pos-cust-village").value = "";
     if (document.getElementById("pos-cust-crop")) document.getElementById("pos-cust-crop").value = "";
     document.getElementById("pos-remarks").value = "";
+
+    const statusBanner = document.getElementById("pos-cust-status-banner");
+    if (statusBanner) statusBanner.style.display = "none";
+    const suggestionsBox = document.getElementById("pos-cust-suggestions");
+    if (suggestionsBox) {
+        suggestionsBox.style.display = "none";
+        suggestionsBox.innerHTML = "";
+    }
+    selectedPosFarmerId = null;
 }
 
 // ----------------- Inward Purchase Tab -----------------
