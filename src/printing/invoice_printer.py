@@ -40,12 +40,13 @@ class InvoicePrinter:
 
     def __init__(self, company_settings: Optional[CompanySettings] = None):
         self.settings = company_settings or CompanySettings(
-            company_name="श्री कृषीधन कृषी सेवा केंद्र",
-            mobile="9503673620",
-            address="मुख्य बाजारपेठ, इंदापूर",
-            city="इंदापूर",
+            company_name="कृषीधन कृषी उद्योग समूह",
+            mobile="9503573620 / 7218409780",
+            address="नागोबा कट्ट्याशेजारी, विसापूर, ता. तासगाव.",
+            city="विसापूर (तासगाव)",
             state="Maharashtra",
-            gstin="27ADWPW5057C1ZW",
+            email="akashlengare15@gmail.com",
+            gstin="27AAAAA0000A1Z5",
             dl_fertilizer="LIC/FERT/2026/0123",
             dl_pesticide="LIC/PEST/2026/0456",
             dl_seed="LIC/SEED/2026/0789",
@@ -210,10 +211,11 @@ class InvoicePrinter:
 
         shop_banner_html = f"""
         <div align="center">
-            <font size="15" color="#b91c1c"><b>श्री कृषीधन कृषी सेवा केंद्र</b></font><br/>
-            <font size="7.5" color="#15803d"><b>शासनमान्य सर्व प्रकारचे बी-बियाणे, कीटकनाशके, रासायनिक खते, शेती औषधांचे अधिकृत विक्रेते..</b></font><br/>
-            <font size="8.5"><b>👤 प्रोप्रा. आकाश लेंगारे &nbsp;|&nbsp; 📞 मो. ९५०३६७३६२० / 9503673620</b></font><br/>
-            <font size="8"><b>GSTIN: {self.settings.gstin or '27ADWPW5057C1ZW'}</b> &nbsp;|&nbsp; पत्ता: {self.settings.address or 'मुख्य बाजारपेठ'}, {self.settings.city or 'इंदापूर'}</font>
+            <font size="16" color="#b91c1c"><b>कृषीधन कृषी उद्योग समूह</b></font><br/>
+            <font size="8" color="#15803d"><b>विसापूर • विश्वासनीय ठिकाण...</b></font><br/>
+            <font size="7" color="#15803d">आमचेकडे नामांकित कंपनीची शेती औषधे, रासायनिक खते, बी-बियाणे, किटकनाशके, तणनाशके, बुरशीनाशके योग्य दरात मिळतील.</font><br/>
+            <font size="8.5"><b>👤 प्रोपा. श्री. आकाश लेंगारे &nbsp;|&nbsp; 📞 ९५०३५७३६२० / ७२१८४०९७८०</b></font><br/>
+            <font size="7.5">पत्ता: {self.settings.address or 'नागोबा कट्ट्याशेजारी, विसापूर, ता. तासगाव.'} &nbsp;|&nbsp; E-mail: {self.settings.email or 'akashlengare15@gmail.com'}</font>
         </div>
         """
         banner_p = Paragraph(shop_banner_html, styles["Normal"])
@@ -239,14 +241,15 @@ class InvoicePrinter:
         # 2. CUSTOMER & INVOICE META ROW
         # -------------------------------------------------------------------------
         time_str = "11:30 AM"
+        clean_inv_no = sale.invoice_no.replace('INV-', '')
         cust_box_html = f"""
         <b>Cust Name :</b> {(sale.customer_name or 'CASH CUSTOMER').upper()}<br/>
         <b>Address &nbsp;&nbsp;:</b> {(sale.customer_village or 'SHOP / LOCAL').upper()}<br/>
         <b>Mobile &nbsp;&nbsp;&nbsp;&nbsp;:</b> {sale.customer_mobile or '-'}<br/>
-        <b>Crop Details :</b> {sale.doctor_or_officer or 'ऊस / सर्व पिके (General Agri)'}
+        <b>Crop Details :</b> {sale.doctor_or_officer or 'ऊस / सर्व पिके'}
         """
         inv_box_html = f"""
-        <b>Invoice No. :</b> S/2026-27/{sale.invoice_no.replace('INV-', '')}<br/>
+        <b>Invoice No. :</b> S/2026-27/{clean_inv_no}<br/>
         <b>Date & Time :</b> {sale.sale_date} {time_str}<br/>
         <b>Payment Mode:</b> {pay_mode_label}<br/>
         <b>Farmer GSTIN:</b> {sale.customer_gstin or 'URP'}
@@ -281,7 +284,7 @@ class InvoicePrinter:
             Paragraph("<b>वाण<br/>(Crop)</b>", table_hdr_style),
             Paragraph("<b>बॅच नंबर<br/>(Batch)</b>", table_hdr_style),
             Paragraph("<b>अंतिम मुदत<br/>(Exp)</b>", table_hdr_style),
-            Paragraph("<b>पॅकिंग<br/>(Unit)</b>", table_hdr_style),
+            Paragraph("<b>पॅकिंग<br/>(Packing)</b>", table_hdr_style),
             Paragraph("<b>दर<br/>(Rate)</b>", table_hdr_style),
             Paragraph("<b>एकूण नग<br/>(Qty)</b>", table_hdr_style),
             Paragraph("<b>एकूण रक्कम<br/>(Amount)</b>", table_hdr_style),
@@ -290,14 +293,21 @@ class InvoicePrinter:
         item_rows = [headers]
         for item in sale.items:
             comp_name = "KRUSHIDHAN AGRO"
-            if "IFFCO" in (item.product_name or ""):
-                comp_name = "IFFCO LTD"
-            elif "BAYER" in (item.product_name or "").upper():
+            p_name_upper = (item.product_name or "").upper()
+            if "BAYER" in p_name_upper or "XIVANA" in p_name_upper:
                 comp_name = "BAYER CROP"
-            elif "SYNGENTA" in (item.product_name or "").upper():
+            elif "CRYSTAL" in p_name_upper or "BAVISTIN" in p_name_upper:
+                comp_name = "CRYSTAL CROP"
+            elif "SYNGENTA" in p_name_upper:
                 comp_name = "SYNGENTA"
-            elif "MAHYCO" in (item.product_name or "").upper():
+            elif "MAHADHAN" in p_name_upper:
+                comp_name = "MAHADHAN"
+            elif "MAHYCO" in p_name_upper:
                 comp_name = "MAHYCO SEEDS"
+            elif "IFFCO" in p_name_upper:
+                comp_name = "IFFCO LTD"
+            elif "UPL" in p_name_upper:
+                comp_name = "UPL LIMITED"
 
             item_rows.append(
                 [
@@ -361,13 +371,13 @@ class InvoicePrinter:
         <b>{amount_words_str}</b>
         <br/><br/>
         <font size="6.5" color="#374151">
-        बिलामधील नमूद केलेली कीटकनाशके / औषधे मी माझ्या मर्जीने घेतलेली आहेत. त्याचा फवारणीचा वापर करताना घ्यावयाच्या संपूर्ण दक्षतेबाबत मला माहिती दिलेली असून पुढील सर्व जबाबदारी माझी राहील. ही औषधे फक्त शेती उपयोगासाठी घेतली आहेत.
+        बिलामधील नमूद केलेली कीटकनाशके मी माझ्या मर्जीने घेतलेली आहेत. त्यास फवारणीचे वापर करताना घ्यावयाची संपूर्ण दक्षतेबाबत मला माहिती दिलेली असून पुढील सर्व जबाबदारी माझी राहील. ही औषधे फक्त शेती उपयोगासाठी घेतली आहेत.
         </font>
         <br/><br/>
         <table width="100%">
             <tr>
                 <td align="left"><b>ग्राहकाची सही (Customer Sign)</b></td>
-                <td align="right"><b>आपल्या भेटीबद्दल आभारी आहोत. धन्यवाद ..!</b></td>
+                <td align="right"><b>आपल्या भेटीबद्दल आभारी आहोत. धन्यवाद !</b></td>
             </tr>
         </table>
         """
@@ -379,7 +389,7 @@ class InvoicePrinter:
             [Paragraph("<b>NET BILL AMT :</b>", small_bold), Paragraph(f"<b>₹ {sale.net_amount:.2f}</b>", ParagraphStyle("TRB", parent=small_bold, alignment=2))],
             [Paragraph("PAID AMT :", small_text), Paragraph(f"₹ {sale.paid_amount:.2f}", ParagraphStyle("TR", parent=small_text, alignment=2))],
             [Paragraph("<b>BALANCE AMT :</b>", small_bold), Paragraph(f"<b>₹ {due_bal:.2f}</b>", ParagraphStyle("TR", parent=small_bold, alignment=2))],
-            [Paragraph("<font size='6.5'>For <b>KRUSHIDHAN KRISHI SEVA KENDRA</b><br/><br/>Authorized Signatory</font>", ParagraphStyle("Auth", parent=small_text, alignment=1)), Paragraph("")],
+            [Paragraph("<font size='6.5'>For <b>KRUSHIDHAN AGRI UDYOG SAMUH</b><br/><br/>Authorized Signatory</font>", ParagraphStyle("Auth", parent=small_text, alignment=1)), Paragraph("")],
         ]
         totals_table = Table(totals_table_data, colWidths=[36 * mm, 30 * mm])
         totals_table.setStyle(
@@ -387,7 +397,7 @@ class InvoicePrinter:
                 [
                     ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
                     ("INNERGRID", (0, 0), (-1, -2), 0.5, colors.HexColor("#d1d5db")),
-                    ("SPAN", (0, -1), (1, -1)),  # Span signature across both columns
+                    ("SPAN", (0, -1), (1, -1)),
                     ("TOPPADDING", (0, 0), (-1, -1), 2),
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -414,7 +424,7 @@ class InvoicePrinter:
 
         # Jurisdiction note
         story.append(Spacer(1, 2))
-        jurisdiction_p = Paragraph("<font size='6.5' color='#6b7280'>Subject to Local Jurisdiction • Software by Krushidhan ERP</font>", ParagraphStyle("J", parent=small_text, alignment=1))
+        jurisdiction_p = Paragraph("<font size='6.5' color='#6b7280'>Subject to TASGAON / SANGLI Jurisdiction • Software by Krushidhan ERP</font>", ParagraphStyle("J", parent=small_text, alignment=1))
         story.append(jurisdiction_p)
 
         doc.build(story)

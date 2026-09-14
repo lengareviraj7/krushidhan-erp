@@ -508,9 +508,9 @@ async function submitSalesBill() {
         const result = await res.json();
 
         if (res.ok && result.success) {
-            // Open PDF Tax Invoice in a new tab for printing
-            window.open(`/api/sales/${result.sale_id}/pdf`, "_blank");
-            alert(`✓ Bill ${invNo} saved for ${custName}!`);
+            currentSavedSaleId = result.sale_id;
+            // Show on-screen Crystal Reports Invoice Preview Modal
+            openInvoicePreviewModal(salePayload, result.sale_id);
             resetPosCart();
             await refreshProductList();
             await refreshCustomerList();
@@ -2338,7 +2338,7 @@ function openCounterUpiQrModal(customAmount = null) {
     if (amtDisplay) amtDisplay.textContent = `₹${amount.toFixed(2)}`;
 
     // Build standard NPCI UPI payload
-    const upiUri = `upi://pay?pa=9503673620@upi&pn=Shree%20Krushidhan%20Krishi%20Seva%20Kendra&am=${amount.toFixed(2)}&cu=INR&tn=Krushidhan%20Bill`;
+    const upiUri = `upi://pay?pa=9503573620@upi&pn=Krushidhan%20Agri%20Udyog%20Samuh&am=${amount.toFixed(2)}&cu=INR&tn=Krushidhan%20Bill`;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiUri)}`;
 
     const qrImg = document.getElementById("upi-qr-image");
@@ -2358,5 +2358,109 @@ function onPosPaymentModeChanged() {
         openCounterUpiQrModal();
     }
 }
+
+// ============================================================
+// 5. OFFICIAL CRYSTAL REPORTS TAX INVOICE MODAL & PRINT LOGIC
+// ============================================================
+let currentSavedSaleId = null;
+
+function numberToIndianWords(amount) {
+    const num = Math.round(amount);
+    if (isNaN(num) || num === 0) return "Zero Rupees Only / शून्य रुपये";
+
+    const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+    const b = ['', '', 'Twenty ', 'Thirty ', 'Forty ', 'Fifty ', 'Sixty ', 'Seventy ', 'Eighty ', 'Ninety '];
+
+    function inWords(n) {
+        if ((n = n.toString()).length > 9) return 'overflow';
+        let n_array = ('000000000' + n).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+        if (!n_array) return '';
+        let str = '';
+        str += (n_array[1] != 0) ? (a[Number(n_array[1])] || b[n_array[1][0]] + a[n_array[1][1]]) + 'Crore ' : '';
+        str += (n_array[2] != 0) ? (a[Number(n_array[2])] || b[n_array[2][0]] + a[n_array[2][1]]) + 'Lakh ' : '';
+        str += (n_array[3] != 0) ? (a[Number(n_array[3])] || b[n_array[3][0]] + a[n_array[3][1]]) + 'Thousand ' : '';
+        str += (n_array[4] != 0) ? (a[Number(n_array[4])] || b[n_array[4][0]] + a[n_array[4][1]]) + 'Hundred ' : '';
+        str += (n_array[5] != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n_array[5])] || b[n_array[5][0]] + a[n_array[5][1]]) : '';
+        return str.trim();
+    }
+
+    return `${inWords(num)} Rupees Only`;
+}
+
+function openInvoicePreviewModal(salePayload, saleId) {
+    currentSavedSaleId = saleId;
+    const modal = document.getElementById("modal-invoice-preview");
+    if (!modal) return;
+
+    // Retrieve customer metadata
+    const custName = document.getElementById("pos-cust-name")?.value || "थेट ग्राहक (Cash Customer)";
+    const custMobile = document.getElementById("pos-cust-mobile")?.value || "-";
+    const custVillage = document.getElementById("pos-cust-village")?.value || "विसापूर";
+    const crop = document.getElementById("pos-cust-crop")?.value || "ऊस / सर्व पिके";
+
+    document.getElementById("inv-prev-cust-name").textContent = custName;
+    document.getElementById("inv-prev-cust-addr").textContent = custVillage;
+    document.getElementById("inv-prev-cust-mobile").textContent = custMobile;
+    document.getElementById("inv-prev-inv-no").textContent = salePayload.invoice_no;
+    document.getElementById("inv-prev-date").textContent = new Date().toLocaleString('en-IN');
+    document.getElementById("inv-prev-crop").textContent = crop || "ऊस / सर्व पिके";
+    document.getElementById("inv-prev-paymode").textContent = salePayload.payment_mode;
+
+    // Items table
+    const tbody = document.getElementById("inv-prev-items-tbody");
+    if (tbody) {
+        tbody.innerHTML = "";
+        let sr = 1;
+        salePayload.items.forEach(item => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td style="text-align: center;">${sr++}</td>
+                <td><strong>${item.product_name}</strong></td>
+                <td style="text-align: center;">${item.company_name || 'KRUSHIDHAN'}</td>
+                <td style="text-align: center;">-</td>
+                <td style="text-align: center;">${item.batch_no || '-'}</td>
+                <td style="text-align: center;">${item.exp_date || '-'}</td>
+                <td style="text-align: center;">${item.unit || 'Nos'}</td>
+                <td style="text-align: right;">₹${item.rate.toFixed(2)}</td>
+                <td style="text-align: right;"><strong>${item.quantity}</strong></td>
+                <td style="text-align: right; font-weight: 700;">₹${item.total_amount.toFixed(2)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Totals calculations
+    const subtotal = salePayload.total_taxable || (salePayload.net_amount - ((salePayload.total_cgst || 0) + (salePayload.total_sgst || 0)));
+    const totalGst = (salePayload.total_cgst || 0) + (salePayload.total_sgst || 0);
+
+    document.getElementById("inv-prev-subtotal").textContent = `₹${subtotal.toFixed(2)}`;
+    document.getElementById("inv-prev-gst").textContent = `₹${totalGst.toFixed(2)}`;
+    document.getElementById("inv-prev-round").textContent = `₹${(salePayload.round_off || 0).toFixed(2)}`;
+    document.getElementById("inv-prev-net").textContent = `₹${salePayload.net_amount.toFixed(2)}`;
+    document.getElementById("inv-prev-paid").textContent = `₹${(salePayload.paid_amount || 0).toFixed(2)}`;
+    document.getElementById("inv-prev-balance").textContent = `₹${(salePayload.due_amount || 0).toFixed(2)}`;
+    document.getElementById("inv-prev-words").textContent = numberToIndianWords(salePayload.net_amount);
+
+    modal.style.display = "flex";
+}
+
+function closeInvoicePreviewModal() {
+    const modal = document.getElementById("modal-invoice-preview");
+    if (modal) modal.style.display = "none";
+}
+
+function printInvoicePreview() {
+    window.print();
+}
+
+function downloadInvoicePdf(saleId = null) {
+    const id = saleId || currentSavedSaleId;
+    if (!id) {
+        alert("Invoice ID not found.");
+        return;
+    }
+    window.open(`/api/sales/${id}/pdf`, "_blank");
+}
+
 
 

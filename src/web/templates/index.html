@@ -1499,6 +1499,186 @@
         </div>
     </div>
 
+    <!-- Official Maharashtra Agri-Retail Tax Invoice Preview & Print Modal -->
+    <div id="modal-invoice-preview" class="modal-backdrop">
+        <div class="modal-dialog" style="width: 900px; max-width: 98%;">
+            <div class="modal-header">
+                <span style="font-weight: 800; font-size: 15px;">📄 कर बीजक (Tax Invoice) - कृषीधन कृषी उद्योग समूह</span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-primary btn-sm" onclick="printInvoicePreview()" style="font-weight: 700; background: #15803d; border-color: #15803d;">
+                        🖨️ प्रिंट बिल (Print Bill)
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm" onclick="downloadInvoicePdf()" style="font-weight: 700;">
+                        📥 Download PDF
+                    </button>
+                    <button class="btn-close" onclick="closeInvoicePreviewModal()">✕</button>
+                </div>
+            </div>
+            <div class="modal-body" style="padding: 12px; background: #f8fafc; overflow-y: auto; max-height: 80vh;">
+                
+                <!-- Printable Invoice Sheet Area -->
+                <div id="invoice-print-area" class="invoice-sheet">
+                    <!-- Top Header Grid -->
+                    <div class="inv-header-grid">
+                        <div class="inv-lic-box">
+                            <div class="inv-lic-title">TAX INVOICE : CASH/CREDIT</div>
+                            <div>Fert. Lic: <strong>12345/2026</strong></div>
+                            <div>Insecticide: <strong>67890/2026</strong></div>
+                            <div>Seeds Lic: <strong>11223/2026</strong></div>
+                            <div>Cotton Lic: <strong>44556/2026</strong></div>
+                            <div>GSTIN: <strong>27AAAAA0000A1Z5</strong></div>
+                        </div>
+
+                        <div class="inv-title-box">
+                            <div class="inv-shop-title">कृषीधन कृषी उद्योग समूह</div>
+                            <div class="inv-shop-sub">विसापूर, ता. तासगाव</div>
+                            <div class="inv-shop-addr">नागोबा कट्ट्याशेजारी, विसापूर, ता. तासगाव.</div>
+                            <div style="font-size: 10px; color: #475569;">E-mail: akashlengare15@gmail.com</div>
+                        </div>
+
+                        <div class="inv-owner-box">
+                            <div style="font-size: 10px; color: #64748b;">प्रोपा.</div>
+                            <div class="inv-owner-name">श्री. आकाश लेंगारे</div>
+                            <div>मो. <span class="inv-owner-mob">9503573620</span></div>
+                            <div>मो. <span class="inv-owner-mob">7218409780</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Customer & Invoice Meta Grid -->
+                    <div class="inv-meta-grid">
+                        <div>
+                            <div class="inv-meta-row">
+                                <span class="inv-meta-label">Cust Name:</span>
+                                <span class="inv-meta-val" id="inv-prev-cust-name">-</span>
+                            </div>
+                            <div class="inv-meta-row">
+                                <span class="inv-meta-label">Address:</span>
+                                <span class="inv-meta-val" id="inv-prev-cust-addr">-</span>
+                            </div>
+                            <div class="inv-meta-row">
+                                <span class="inv-meta-label">Mobile No:</span>
+                                <span class="inv-meta-val" id="inv-prev-cust-mobile">-</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="inv-meta-row">
+                                <span class="inv-meta-label">Invoice No:</span>
+                                <span class="inv-meta-val" id="inv-prev-inv-no" style="color: #b91c1c;">-</span>
+                            </div>
+                            <div class="inv-meta-row">
+                                <span class="inv-meta-label">Date & Time:</span>
+                                <span class="inv-meta-val" id="inv-prev-date">-</span>
+                            </div>
+                            <div class="inv-meta-row">
+                                <span class="inv-meta-label">Crop / पीक:</span>
+                                <span class="inv-meta-val" id="inv-prev-crop">ऊस / सर्व पिके</span>
+                            </div>
+                            <div class="inv-meta-row">
+                                <span class="inv-meta-label">Pay Mode:</span>
+                                <span class="inv-meta-val" id="inv-prev-paymode">CASH</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Invoice Items Table -->
+                    <table class="inv-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 30px;">अ.क्र.</th>
+                                <th style="text-align: left;">मालाचा तपशील (Product)</th>
+                                <th>कंपनीचे नाव</th>
+                                <th>वाण</th>
+                                <th>बॅच नं</th>
+                                <th>अंतिम मुदत</th>
+                                <th>पॅकिंग</th>
+                                <th style="text-align: right;">दर (₹)</th>
+                                <th style="text-align: right;">एकूण नग</th>
+                                <th style="text-align: right;">एकूण रक्कम (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inv-prev-items-tbody">
+                            <!-- Items populated dynamically -->
+                        </tbody>
+                    </table>
+
+                    <!-- Bottom Summary & Declarations -->
+                    <div class="inv-bottom-grid">
+                        <div>
+                            <div class="inv-words-box">
+                                अक्षरी रक्कम: <span id="inv-prev-words" style="color: #1e293b;">-</span>
+                            </div>
+                            <div class="inv-decl-box">
+                                <strong>हमीपत्र:</strong> आम्ही असे प्रमाणित करतो की या बीजकामध्ये नमूद केलेली खते / बियाणे / कीटकनाशके ही संबंधित कायदे व नियमांच्या सर्व तरतुदींचे पालन करून अधिकृतपणे विकली आहेत.
+                            </div>
+                            <div style="font-size: 10px; font-weight: 700; color: #15803d;">
+                                🙏 आपल्या भेटीबद्दल आभारी आहोत. पुन्हा अवश्य भेट द्या !
+                            </div>
+                            <div class="inv-cust-sign">
+                                ग्राहकाची सही (Customer Sign)
+                            </div>
+                        </div>
+
+                        <div>
+                            <table class="inv-totals-table">
+                                <tr>
+                                    <td>Sub Total (एकूण)</td>
+                                    <td class="text-right" id="inv-prev-subtotal">₹0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>Freight & Postage</td>
+                                    <td class="text-right">₹0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>GST (कर रक्कम)</td>
+                                    <td class="text-right" id="inv-prev-gst">₹0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>Round Off</td>
+                                    <td class="text-right" id="inv-prev-round">₹0.00</td>
+                                </tr>
+                                <tr class="total-highlight">
+                                    <td>NET BILL AMT</td>
+                                    <td class="text-right" id="inv-prev-net">₹0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>PAID AMT (जमा)</td>
+                                    <td class="text-right" id="inv-prev-paid" style="color: #15803d; font-weight: 700;">₹0.00</td>
+                                </tr>
+                                <tr>
+                                    <td>BALANCE (बाकी)</td>
+                                    <td class="text-right" id="inv-prev-balance" style="color: #dc2626; font-weight: 700;">₹0.00</td>
+                                </tr>
+                            </table>
+
+                            <div class="inv-auth-box">
+                                <div style="font-weight: 700; font-size: 11px;">For KRUSHIDHAN AGRI UDYOG SAMUH</div>
+                                <div style="margin-top: 25px; border-top: 1px dashed #64748b; display: inline-block; width: 150px; text-align: center; font-size: 10px;">
+                                    Authorized Signatory
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="inv-jurisdiction">
+                        Subject to TASGAON / SANGLI Jurisdiction • This is a Computer Generated Tax Invoice
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="btn btn-secondary" onclick="closeInvoicePreviewModal()">नवीन बिल (New Bill)</button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary" onclick="printInvoicePreview()" style="font-weight: 700; background: #15803d; border-color: #15803d;">
+                        🖨️ प्रिंट बिल (Print Bill)
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="downloadInvoicePdf()" style="font-weight: 700;">
+                        📥 Download Official PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/app.js"></script>
 
 
