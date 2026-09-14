@@ -1,0 +1,18 @@
+# Python virtual environment & cache
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# SQLite runtime files (keep seed database template if needed)
+data/backups/

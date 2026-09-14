@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KRUSHIDHAN - Agri-Input Shop ERP</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+    <!-- Header / Branding -->
+    <header>
+        <div class="brand-box">
+            <span style="font-size: 22px;">🌱</span>
+            <div>
+                <div class="brand-title">KRUSHIDHAN AGRI-INPUT SHOP ERP</div>
+                <div class="brand-badge">Krushidhan Krishi Seva Kendra • Fertilizer • Seed • Pesticide • GST Billing</div>
+            </div>
+        </div>
+        <div class="header-right">
+            <span>⚡ 100% Offline Mode</span>
+            <button class="btn btn-secondary btn-sm" onclick="triggerDatabaseBackup()">💾 1-Click Backup</button>
+        </div>
+    </header>
+
+    <!-- Navigation Bar -->
+    <nav class="nav-tabs">
+        <div class="nav-tab active" data-tab="tab-pos">🧾 Counter Billing (POS)</div>
+        <div class="nav-tab" data-tab="tab-farmer-status">👨‍🌾 Farmer Status & Khata (शेतकरी खाते)</div>
+        <div class="nav-tab" data-tab="tab-purchase">📥 Inward Purchase</div>
+        <div class="nav-tab" data-tab="tab-inventory">📦 Live Stock & Expiry</div>
+        <div class="nav-tab" data-tab="tab-accounts">💰 Accounts & Day Book</div>
+        <div class="nav-tab" data-tab="tab-pnl">📈 Profit & Loss (नफा-तोटा)</div>
+        <div class="nav-tab" data-tab="tab-gst">📊 Statutory GST (GSTR-1)</div>
+        <div class="nav-tab" data-tab="tab-masters">📋 Product Catalog</div>
+        <div class="nav-tab" data-tab="tab-settings">⚙️ Shop Profile</div>
+    </nav>
+
+    <!-- Main Content Workspaces -->
+    <main>
+
+        <!-- 1. POS Billing Workspace -->
+        <div id="tab-pos" class="tab-pane active">
+            <div class="pos-container">
+                
+                <!-- Left: Invoice Entry & Cart Table -->
+                <div class="pos-left">
+                    <!-- Customer & Header Meta -->
+                    <div class="card" style="padding: 12px 16px; margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); border-top: 3px solid var(--primary);">
+                        <div class="form-row" style="margin-bottom: 8px;">
+                            <div class="form-group" style="flex: 0 0 130px;">
+                                <label>Invoice No</label>
+                                <input type="text" id="pos-inv-no" readonly style="font-weight: 700; background: #f8fafc; text-align: center;">
+                            </div>
+                            <div class="form-group" style="flex: 0 0 150px;">
+                                <label>Bill Date</label>
+                                <input type="date" id="pos-date" style="font-weight: 500;">
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label>Farmer / Customer Name <span style="color:#ef4444;">*</span></label>
+                                <input type="text" id="pos-cust-name" list="pos-customer-datalist" placeholder="Type farmer name (e.g. Ramesh Patil)..." autocomplete="off" style="font-weight: 600;">
+                                <datalist id="pos-customer-datalist"></datalist>
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-bottom: 0;">
+                            <div class="form-group">
+                                <label>Mobile No</label>
+                                <input type="text" id="pos-cust-mobile" placeholder="10-digit mobile">
+                            </div>
+                            <div class="form-group">
+                                <label>Village / Location</label>
+                                <input type="text" id="pos-cust-village" placeholder="e.g. Indapur / Nimgaon">
+                            </div>
+                            <div class="form-group" style="flex: 1.2;">
+                                <label>Crop / Field Details</label>
+                                <input type="text" id="pos-cust-crop" placeholder="e.g. Sugarcane / Pomegranate / Onion">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Line Item Quick-Add Bar -->
+                    <div class="card" style="padding: 12px 16px; margin-bottom: 10px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                        <div class="form-row" style="margin-bottom: 8px;">
+                            <div class="form-group" style="flex: 1.4;">
+                                <label>Search & Select Product</label>
+                                <select id="pos-item-product" style="font-weight: 600;"></select>
+                            </div>
+                            <div class="form-group" style="flex: 1.2;">
+                                <label>Batch No (FEFO First Stock)</label>
+                                <select id="pos-item-batch" style="font-weight: 500;"></select>
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-bottom: 0; align-items: flex-end;">
+                            <div class="form-group">
+                                <label>Quantity</label>
+                                <input type="number" id="pos-item-qty" value="1" min="0.1" step="any" style="font-weight: 600; text-align: center;">
+                            </div>
+                            <div class="form-group">
+                                <label>Sale Rate (₹)</label>
+                                <input type="number" id="pos-item-rate" step="0.01" style="font-weight: 700; color: #047857; text-align: right;">
+                            </div>
+                            <div class="form-group" style="flex: 0.8;">
+                                <label>Disc %</label>
+                                <input type="number" id="pos-item-disc" value="0" min="0" max="100" style="text-align: center;">
+                            </div>
+                            <div class="form-group" style="flex: 1.2;">
+                                <button class="btn btn-primary" onclick="addPosItem()" style="width: 100%; padding: 8.5px 12px; font-weight: 700; justify-content: center; box-shadow: 0 2px 4px rgba(21,128,61,0.2);">+ Add Item</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Items Grid -->
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 35px;" class="text-center">#</th>
+                                    <th>Product Description</th>
+                                    <th>Batch No</th>
+                                    <th>Exp Date</th>
+                                    <th class="text-center">Qty</th>
+                                    <th class="text-right">Rate</th>
+                                    <th class="text-right">Taxable</th>
+                                    <th class="text-right">Total (₹)</th>
+                                    <th style="width: 45px;" class="text-center">Del</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pos-cart-tbody">
+                                <tr><td colspan="9" class="text-center text-muted" style="padding: 24px;">No items added yet. Search or select a product above.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Right: Summary & Action Panel -->
+                <div class="pos-right">
+                    <div class="totals-panel">
+                        <div class="card-title">Billing Summary</div>
+                        <div class="total-row">
+                            <span class="text-muted">Taxable Amount:</span>
+                            <span id="pos-tot-taxable" style="font-weight: 600;">₹0.00</span>
+                        </div>
+                        <div class="total-row">
+                            <span class="text-muted">Total GST (CGST+SGST):</span>
+                            <span id="pos-tot-gst" style="font-weight: 600;">₹0.00</span>
+                        </div>
+                        <div class="total-row">
+                            <span class="text-muted">Round Off:</span>
+                            <span id="pos-tot-round">₹0.00</span>
+                        </div>
+                        <div class="total-row grand-total">
+                            <span>NET PAYABLE:</span>
+                            <span id="pos-grand-total">₹0.00</span>
+                        </div>
+
+                        <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 12px 0;">
+
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>Payment Mode</label>
+                            <select id="pos-pay-mode">
+                                <option value="CASH">💵 Cash Counter</option>
+                                <option value="UPI">📱 UPI / QR Code</option>
+                                <option value="CREDIT">⏳ Credit (Udhar / Khata)</option>
+                                <option value="CARD">💳 Debit/Credit Card</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>Amount Received</label>
+                            <input type="number" id="pos-paid-amount" style="font-size: 15px; font-weight: 700; color: var(--primary);">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label>Doctor / Officer Recommendation & Remarks</label>
+                            <textarea id="pos-remarks" rows="2" placeholder="e.g. As advised by Krishi Seva Kendra / Spraying instructions"></textarea>
+                        </div>
+
+                        <button class="btn btn-success" onclick="submitSalesBill()" style="width: 100%; padding: 12px; font-size: 15px; justify-content: center;">
+                            🖨️ SAVE & PRINT INVOICE (Ctrl+P)
+                        </button>
+                        <button class="btn btn-secondary" onclick="resetPosCart()" style="width: 100%; margin-top: 6px; justify-content: center;">
+                            🔄 Reset Form (F2)
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- 2. Farmer Status & Khata Workspace -->
+        <div id="tab-farmer-status" class="tab-pane">
+            <!-- Top KPI Cards -->
+            <div class="grid-3" style="margin-bottom: 10px;">
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title">Registered Farmers</div>
+                    <div id="fs-total-farmers" style="font-size: 20px; font-weight: 800; color: var(--primary);">0</div>
+                </div>
+                <div class="card" style="margin-bottom: 0;">
+                    <div class="card-title">Total Sales to Farmers</div>
+                    <div id="fs-total-sales" style="font-size: 20px; font-weight: 800; color: var(--secondary);">₹0.00</div>
+                </div>
+                <div class="card" style="margin-bottom: 0; background: #fff5f5; border-color: #fed7d7;">
+                    <div class="card-title" style="color: var(--danger);">⚠️ Total Credit to Recover (उधारी)</div>
+                    <div id="fs-total-pending" style="font-size: 20px; font-weight: 800; color: var(--danger);">₹0.00</div>
+                </div>
+            </div>
+
+            <!-- Search & Village Filters Bar -->
+            <div class="card" style="padding: 10px 14px; margin-bottom: 10px;">
+                <div class="form-row" style="margin-bottom: 0;">
+                    <div class="form-group" style="flex: 2.5;">
+                        <label>Search Farmer Name / Mobile</label>
+                        <input type="text" id="fs-search-name" placeholder="Type farmer name or mobile to filter..." oninput="filterFarmerStatusList()">
+                    </div>
+                    <div class="form-group" style="flex: 1.8;">
+                        <label>Filter by Village</label>
+                        <select id="fs-filter-village" onchange="filterFarmerStatusList()">
+                            <option value="">All Villages (सर्व गावे)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 1.8; align-self: flex-end;">
+                        <button class="btn btn-secondary" id="fs-btn-credit-toggle" onclick="toggleOnlyCreditFilter()" style="width: 100%;">
+                            ⚠️ Show Only Pending Khata
+                        </button>
+                    </div>
+                    <div class="form-group" style="flex: 1; align-self: flex-end;">
+                        <button class="btn btn-primary" onclick="loadFarmerStatusList()" style="width: 100%;">🔄 Refresh</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Farmers Table -->
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Farmer Name</th>
+                            <th>Village</th>
+                            <th>Mobile</th>
+                            <th class="text-center">Bills Count</th>
+                            <th class="text-right">Total Purchases</th>
+                            <th class="text-right">Total Paid</th>
+                            <th class="text-right">Pending Credit (उधार)</th>
+                            <th class="text-center" style="width: 160px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fs-farmers-tbody">
+                        <tr><td colspan="8" class="text-center text-muted" style="padding: 24px;">Loading farmer list...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 3. Inward Purchase Workspace -->
+        <div id="tab-purchase" class="tab-pane">
+            <div class="card" style="max-width: 900px; margin: 0 auto;">
+                <div class="card-title">Inward Goods Receipt (Purchase Entry)</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Supplier / Distributor</label>
+                        <select id="pur-supplier"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Supplier Invoice No</label>
+                        <input type="text" id="pur-inv-no" placeholder="e.g. IFFCO-99881">
+                    </div>
+                    <div class="form-group">
+                        <label>Purchase Date</label>
+                        <input type="date" id="pur-date" value="2026-09-12">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label>Product</label>
+                        <select id="pur-item-product"></select>
+                    </div>
+                    <div class="form-group" style="flex: 1.5;">
+                        <label>Batch No</label>
+                        <input type="text" id="pur-batch-no" placeholder="e.g. BATCH-2026-01">
+                    </div>
+                    <div class="form-group">
+                        <label>Expiry Date</label>
+                        <input type="date" id="pur-exp-date">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Inward Qty</label>
+                        <input type="number" id="pur-qty" placeholder="Quantity">
+                    </div>
+                    <div class="form-group">
+                        <label>Free Bonus Qty</label>
+                        <input type="number" id="pur-free-qty" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Purchase Rate (₹)</label>
+                        <input type="number" id="pur-rate" placeholder="Cost per unit">
+                    </div>
+                    <div class="form-group">
+                        <label>Sale Rate (₹)</label>
+                        <input type="number" id="pur-sale-rate" placeholder="Retail rate">
+                    </div>
+                    <div class="form-group">
+                        <label>MRP (₹)</label>
+                        <input type="number" id="pur-mrp" placeholder="MRP">
+                    </div>
+                </div>
+
+                <div style="text-align: right; margin-top: 14px;">
+                    <button class="btn btn-primary" onclick="submitPurchase()">📥 Save Inward Stock & Update Supplier</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Live Stock & Expiry Workspace -->
+        <div id="tab-inventory" class="tab-pane">
+            <div class="card" style="margin-bottom: 10px;">
+                <div class="card-title">
+                    <span>90-Day Expiry Watchlist</span>
+                </div>
+                <div id="inv-expiry-alerts">Loading expiry tracking...</div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product Name</th>
+                            <th>Category</th>
+                            <th>Manufacturer</th>
+                            <th>Batch No</th>
+                            <th>Expiry Date</th>
+                            <th class="text-center">Current Stock</th>
+                            <th class="text-right">Pur. Rate</th>
+                            <th class="text-right">Sale Rate</th>
+                            <th class="text-right">Stock Valuation (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inv-table-tbody">
+                        <tr><td colspan="9" class="text-center">Loading stock statement...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 4. Accounts & Day Book Workspace -->
+        <div id="tab-accounts" class="tab-pane">
+            <div class="grid-3" style="margin-bottom: 12px;">
+                <div class="card">
+                    <div class="card-title">Today's Sales</div>
+                    <div id="db-sales" style="font-size: 20px; font-weight: 800; color: var(--primary);">₹0.00</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Today's Purchases</div>
+                    <div id="db-purchases" style="font-size: 20px; font-weight: 800; color: var(--secondary);">₹0.00</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Operational Expenses</div>
+                    <div id="db-expenses" style="font-size: 20px; font-weight: 800; color: var(--danger);">₹0.00</div>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <!-- Customer Collection Receipt -->
+                <div class="card">
+                    <div class="card-title">Customer Collection Receipt</div>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label>Farmer / Customer</label>
+                        <select id="acc-receipt-cust"></select>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Receipt Date</label>
+                            <input type="date" id="acc-receipt-date">
+                        </div>
+                        <div class="form-group">
+                            <label>Amount (₹)</label>
+                            <input type="number" id="acc-receipt-amt" placeholder="Amount received">
+                        </div>
+                        <div class="form-group">
+                            <label>Payment Mode</label>
+                            <select id="acc-receipt-mode">
+                                <option value="CASH">Cash</option>
+                                <option value="UPI">UPI</option>
+                                <option value="BANK_TRANSFER">Bank Transfer</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-success" onclick="submitCustomerReceipt()" style="width: 100%;">Record Customer Receipt</button>
+                </div>
+
+                <!-- Day Book Date Filter -->
+                <div class="card">
+                    <div class="card-title">Day Book Quick Lookup</div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Select Date</label>
+                            <input type="date" id="acc-daybook-date" onchange="loadDayBook()">
+                        </div>
+                    </div>
+                    <p class="text-muted" style="margin-top: 10px; font-size: 12px;">
+                        The Day Book aggregates all cash/credit counter sales, inward stock purchases, and operational shop expenses for the selected date.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Profit & Loss Workspace -->
+        <div id="tab-pnl" class="tab-pane">
+            <!-- Filter & Quick Buttons Bar -->
+            <div class="card" style="padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <div class="form-group" style="margin-bottom: 0; min-width: 140px;">
+                            <label style="font-size: 10.5px;">From Date</label>
+                            <input type="date" id="pnl-from-date" style="padding: 6px 10px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0; min-width: 140px;">
+                            <label style="font-size: 10.5px;">To Date</label>
+                            <input type="date" id="pnl-to-date" style="padding: 6px 10px;">
+                        </div>
+                        <button class="btn btn-primary" onclick="loadProfitAndLoss()" style="margin-top: 16px; padding: 7px 14px;">
+                            🔍 Calculate P&L
+                        </button>
+                    </div>
+
+                    <!-- Quick Period Selectors -->
+                    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 16px;">
+                        <button class="btn btn-secondary btn-sm" onclick="setPnLPeriod('today')">Today</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPnLPeriod('week')">This Week</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPnLPeriod('month')">This Month (M-T-D)</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPnLPeriod('year')">FY 2026-27</button>
+                        <button class="btn btn-secondary btn-sm" onclick="setPnLPeriod('all')">All Time</button>
+                        <button class="btn btn-success btn-sm" onclick="window.print()" style="margin-left: 6px;">🖨️ Print P&L</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top KPI Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                <!-- 1. Turnover -->
+                <div class="card" style="padding: 12px 14px; margin-bottom: 0; border-left: 4px solid #3b82f6;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">💵 Sales Turnover</div>
+                    <div id="pnl-kpi-sales" style="font-size: 20px; font-weight: 800; color: #1e293b; margin: 4px 0;">₹0.00</div>
+                    <small style="color: #64748b;"><span id="pnl-kpi-invoices">0</span> bills • Disc: <span id="pnl-kpi-disc">₹0</span></small>
+                </div>
+
+                <!-- 2. COGS -->
+                <div class="card" style="padding: 12px 14px; margin-bottom: 0; border-left: 4px solid #f97316;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">📦 Cost of Goods (COGS)</div>
+                    <div id="pnl-kpi-cogs" style="font-size: 20px; font-weight: 800; color: #ea580c; margin: 4px 0;">₹0.00</div>
+                    <small style="color: #64748b;">Batch FIFO/FEFO purchase cost</small>
+                </div>
+
+                <!-- 3. Gross Profit -->
+                <div class="card" style="padding: 12px 14px; margin-bottom: 0; border-left: 4px solid #10b981;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">📈 Gross Profit (GP)</div>
+                    <div id="pnl-kpi-gp" style="font-size: 20px; font-weight: 800; color: #047857; margin: 4px 0;">₹0.00</div>
+                    <small style="color: #047857; font-weight: 600;">Margin: <span id="pnl-kpi-gp-pct">0%</span></small>
+                </div>
+
+                <!-- 4. Operating Expenses -->
+                <div class="card" style="padding: 12px 14px; margin-bottom: 0; border-left: 4px solid #ef4444;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;">📉 Shop Expenses</div>
+                    <div id="pnl-kpi-exp" style="font-size: 20px; font-weight: 800; color: #dc2626; margin: 4px 0;">₹0.00</div>
+                    <small style="color: #64748b;">Rent, staff, electricity, transport</small>
+                </div>
+
+                <!-- 5. Net Profit -->
+                <div class="card" style="padding: 12px 14px; margin-bottom: 0; border-left: 4px solid #8b5cf6; background: #fdf4ff;">
+                    <div style="font-size: 11px; font-weight: 700; color: #6b21a8; text-transform: uppercase;">🏆 Net Profit (NP)</div>
+                    <div id="pnl-kpi-np" style="font-size: 22px; font-weight: 900; color: #7e22ce; margin: 4px 0;">₹0.00</div>
+                    <small style="color: #7e22ce; font-weight: 700;">Net Margin: <span id="pnl-kpi-np-pct">0%</span></small>
+                </div>
+            </div>
+
+            <!-- Two-Column Statement & Category Breakdown -->
+            <div class="pnl-grid-2" style="margin-bottom: 12px;">
+                <!-- Trading & P&L Statement -->
+                <div class="card" style="margin-bottom: 0; display: flex; flex-direction: column;">
+                    <div class="card-title">📜 Trading & Profit/Loss Statement</div>
+                    <div class="table-container" style="max-height: 280px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Particulars</th>
+                                    <th class="text-right">Amount (₹)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pnl-statement-tbody">
+                                <tr><td>Loading statement...</td><td></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Category Profitability Contribution -->
+                <div class="card" style="margin-bottom: 0; display: flex; flex-direction: column;">
+                    <div class="card-title">🌱 Category Margin Breakdown</div>
+                    <div class="table-container" style="max-height: 280px;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th class="text-right">Sales</th>
+                                    <th class="text-right">COGS Cost</th>
+                                    <th class="text-right">Gross Profit</th>
+                                    <th class="text-center">Margin %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pnl-category-tbody">
+                                <tr><td colspan="5" class="text-center text-muted">Loading categories...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Product-by-Product Profitability Table -->
+            <div class="card" style="margin-bottom: 0; display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+                    <div class="card-title" style="margin-bottom: 0;">🔬 Product Profitability & Margins</div>
+                    <input type="text" id="pnl-prod-search" placeholder="🔍 Search product, category, company..." oninput="filterPnLProducts()" style="width: 250px; padding: 6px 10px; font-size: 13px;">
+                </div>
+                <div class="table-container" style="max-height: 350px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Category</th>
+                                <th>Manufacturer</th>
+                                <th class="text-center">Qty Sold</th>
+                                <th class="text-right">Sales Value</th>
+                                <th class="text-right">Cost (COGS)</th>
+                                <th class="text-right">Gross Profit</th>
+                                <th class="text-center">Margin %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pnl-products-tbody">
+                            <tr><td colspan="8" class="text-center text-muted">No sales in this period.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. GST (GSTR-1) Workspace -->
+        <div id="tab-gst" class="tab-pane">
+            <div class="card" style="padding: 10px 14px; margin-bottom: 10px;">
+                <div class="form-row" style="margin-bottom: 0;">
+                    <div class="form-group">
+                        <label>From Date</label>
+                        <input type="date" id="gst-from-date" value="2026-09-01">
+                    </div>
+                    <div class="form-group">
+                        <label>To Date</label>
+                        <input type="date" id="gst-to-date" value="2026-09-30">
+                    </div>
+                    <div class="form-group" style="align-self: flex-end;">
+                        <button class="btn btn-primary" onclick="loadGSTR1()">Generate GSTR-1 Statement</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid-2" style="flex: 1;">
+                <div class="card" style="display: flex; flex-direction: column; margin-bottom: 0;">
+                    <div class="card-title">GSTR-1 B2B (Registered Taxable Buyers)</div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>GSTIN</th>
+                                    <th>Buyer Name</th>
+                                    <th>Inv No</th>
+                                    <th>Date</th>
+                                    <th class="text-right">Value</th>
+                                    <th class="text-right">Taxable</th>
+                                    <th class="text-right">GST</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gst-b2b-tbody">
+                                <tr><td colspan="7" class="text-center text-muted">No B2B records found for date range</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card" style="display: flex; flex-direction: column; margin-bottom: 0;">
+                    <div class="card-title">HSN-Wise Summary of Outward Supplies</div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>HSN Code</th>
+                                    <th>Description</th>
+                                    <th>Unit</th>
+                                    <th class="text-center">Total Qty</th>
+                                    <th class="text-right">Taxable</th>
+                                    <th class="text-right">GST</th>
+                                    <th class="text-right">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gst-hsn-tbody">
+                                <tr><td colspan="7" class="text-center text-muted">No HSN records found for date range</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. Master Data & Catalog Workspace -->
+        <div id="tab-masters" class="tab-pane">
+            <div class="catalog-grid">
+                <!-- Add New Product Card -->
+                <div class="card" style="box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-top: 4px solid var(--primary); padding: 16px;">
+                    <div class="card-title" style="font-size: 15px; margin-bottom: 12px;">🌱 Add New Product SKU</div>
+                    
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label>Product Name <span style="color:#ef4444;">*</span></label>
+                        <input type="text" id="m-prod-name" placeholder="e.g. Mahyco Hybrid Cotton BG-II" style="font-weight: 600;">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label>Category <span style="color:#ef4444;">*</span></label>
+                        <select id="m-prod-cat"></select>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label>Manufacturer / Company</label>
+                        <select id="m-prod-mfg"></select>
+                    </div>
+
+                    <div class="form-row" style="margin-bottom: 10px;">
+                        <div class="form-group">
+                            <label>HSN Code</label>
+                            <input type="text" id="m-prod-hsn" placeholder="e.g. 12099990">
+                        </div>
+                        <div class="form-group">
+                            <label>Unit / Packing</label>
+                            <select id="m-prod-unit"></select>
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-bottom: 12px;">
+                        <div class="form-group" style="flex: 2.2;">
+                            <label>GST Slab</label>
+                            <select id="m-prod-tax"></select>
+                        </div>
+                        <div class="form-group" style="flex: 1.2;">
+                            <label>Min Alert</label>
+                            <input type="number" id="m-prod-alert" value="5" min="0">
+                        </div>
+                    </div>
+
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-bottom: 12px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 6px;">💰 Pricing & Rates (₹)</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+                            <div class="form-group">
+                                <label style="font-size: 10px;">Purchase</label>
+                                <input type="number" id="m-prod-pur-rate" value="0" step="0.01" style="padding: 6px 4px; text-align: center; font-weight: 600;">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 10px;">Sale Rate</label>
+                                <input type="number" id="m-prod-sale-rate" value="0" step="0.01" style="padding: 6px 4px; text-align: center; font-weight: 700; color: #047857;">
+                            </div>
+                            <div class="form-group">
+                                <label style="font-size: 10px;">MRP</label>
+                                <input type="number" id="m-prod-mrp" value="0" step="0.01" style="padding: 6px 4px; text-align: center; font-weight: 600;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary" onclick="createMasterProduct()" style="width: 100%; padding: 10px; font-size: 13.5px; font-weight: 700; justify-content: center; box-shadow: 0 2px 4px rgba(21,128,61,0.2);">+ Save Product to Catalog</button>
+                </div>
+
+                <!-- Product Catalog Table -->
+                <div class="card" style="display: flex; flex-direction: column; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <div class="card-title" style="margin-bottom: 0; font-size: 15px;">📦 Registered Products (<span id="m-prod-count">0</span> items)</div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="m-prod-search" placeholder="🔍 Search name, HSN, company..." oninput="filterProductCatalog()" style="padding: 7px 12px; font-size: 13px; width: 220px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            <select id="m-prod-filter-cat" onchange="filterProductCatalog()" style="padding: 7px 10px; font-size: 13px; width: 140px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                <option value="">All Categories</option>
+                            </select>
+                            <button class="btn btn-secondary btn-sm" onclick="loadMasterTables()">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Product Name</th>
+                                    <th>Category</th>
+                                    <th>Manufacturer</th>
+                                    <th>HSN</th>
+                                    <th class="text-right">Purchase Rate</th>
+                                    <th class="text-right">Sale Rate</th>
+                                    <th class="text-right">MRP</th>
+                                    <th class="text-center">Current Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody id="m-prod-tbody">
+                                <tr><td colspan="8" class="text-center">Loading product catalog...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. Shop Profile & Settings Workspace -->
+        <div id="tab-settings" class="tab-pane">
+            <div class="card" style="max-width: 800px; margin: 0 auto;">
+                <div class="card-title">Shop License & Billing Profile</div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label>Shop / Enterprise Name</label>
+                        <input type="text" id="set-shop-name">
+                    </div>
+                    <div class="form-group" style="flex: 1.2;">
+                        <label>GSTIN</label>
+                        <input type="text" id="set-gstin">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label>Address</label>
+                        <input type="text" id="set-address">
+                    </div>
+                    <div class="form-group">
+                        <label>City</label>
+                        <input type="text" id="set-city">
+                    </div>
+                    <div class="form-group">
+                        <label>Mobile</label>
+                        <input type="text" id="set-mobile">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Fertilizer License No</label>
+                        <input type="text" id="set-lic-fert" placeholder="LIC/FERT/...">
+                    </div>
+                    <div class="form-group">
+                        <label>Pesticide License No</label>
+                        <input type="text" id="set-lic-pest" placeholder="LIC/PEST/...">
+                    </div>
+                    <div class="form-group">
+                        <label>Seed License No</label>
+                        <input type="text" id="set-lic-seed" placeholder="LIC/SEED/...">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label>Bill Terms & Conditions</label>
+                    <textarea id="set-terms" rows="3"></textarea>
+                </div>
+
+                <div style="text-align: right;">
+                    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Shop Profile</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Farmer Detail & Purchase History Modal Dialog -->
+    <div id="modal-farmer-detail" class="modal-backdrop">
+        <div class="modal-dialog" style="width: 850px; max-width: 95%;">
+            <div class="modal-header">
+                <span id="fd-modal-title">👨‍🌾 Farmer Purchase History & Statement</span>
+                <button class="btn-close" onclick="closeFarmerDetailModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- Farmer Summary Header Card -->
+                <div class="card" style="background: #f8fafc; margin-bottom: 12px; padding: 12px 16px;">
+                    <div class="form-row" style="margin-bottom: 0;">
+                        <div style="flex: 2;">
+                            <h3 id="fd-name" style="color: var(--primary); font-size: 16px;">-</h3>
+                            <div class="text-muted" id="fd-meta" style="font-size: 12px; margin-top: 2px;">Village: - | Mobile: -</div>
+                        </div>
+                        <div style="flex: 1.2; text-align: right;">
+                            <div class="text-muted" style="font-size: 11px; text-transform: uppercase;">Total Purchases</div>
+                            <div id="fd-tot-purchases" style="font-weight: 700; font-size: 14px;">₹0.00</div>
+                        </div>
+                        <div style="flex: 1.5; text-align: right; background: #fff5f5; padding: 6px 10px; border-radius: 6px; border: 1px solid #fed7d7;">
+                            <div style="font-size: 11px; text-transform: uppercase; color: var(--danger); font-weight: 700;">Pending Credit (उधार)</div>
+                            <div id="fd-pending-balance" style="font-weight: 800; font-size: 16px; color: var(--danger);">₹0.00</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Collect Payment Bar -->
+                <div class="card" style="padding: 10px 14px; margin-bottom: 12px; background: #e8f4f0; border-color: #bbf7d0;">
+                    <div class="form-row" style="margin-bottom: 0;">
+                        <div class="form-group" style="flex: 1.5;">
+                            <label>Quick Collect Payment (जमा करा)</label>
+                            <input type="number" id="fd-pay-amount" placeholder="Enter amount (₹)" style="font-weight: 700;">
+                        </div>
+                        <div class="form-group" style="flex: 1.2;">
+                            <label>Mode</label>
+                            <select id="fd-pay-mode">
+                                <option value="CASH">💵 Cash</option>
+                                <option value="UPI">📱 UPI</option>
+                                <option value="BANK_TRANSFER">🏦 Bank</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1; align-self: flex-end;">
+                            <button class="btn btn-success" onclick="submitQuickFarmerPayment()" style="width: 100%;">✓ Record Receipt</button>
+                        </div>
+                        <div class="form-group" style="flex: 1.2; align-self: flex-end;">
+                            <button class="btn btn-primary" onclick="sendWhatsAppPaymentReminder()" style="width: 100%; background-color: #25D366; border-color: #25D366;">
+                                📲 WhatsApp Due
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Itemized Invoices & Goods Purchased -->
+                <div class="card-title" style="margin-top: 8px;">Bills & Goods Purchased (खरेदी तपशील)</div>
+                <div class="table-container" style="max-height: 250px; margin-bottom: 12px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Inv No</th>
+                                <th>Date</th>
+                                <th>Goods Purchased (Particulars & Batch)</th>
+                                <th class="text-right">Bill Total</th>
+                                <th class="text-right">Paid</th>
+                                <th class="text-right">Due</th>
+                                <th class="text-center">Invoice PDF</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fd-invoices-tbody">
+                            <tr><td colspan="7" class="text-center text-muted">No purchase records found</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Section: Collection Receipts -->
+                <div class="card-title" style="margin-top: 8px;">Payment & Cash Receipts (जमा पावती इतिहास)</div>
+                <div class="table-container" style="max-height: 160px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Receipt No</th>
+                                <th>Date</th>
+                                <th>Narration</th>
+                                <th class="text-right">Amount Received</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fd-receipts-tbody">
+                            <tr><td colspan="4" class="text-center text-muted">No receipt records found</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeFarmerDetailModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

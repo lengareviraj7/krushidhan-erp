@@ -1,0 +1,136 @@
+"""
+SQLite Database Connection Manager with WAL mode, foreign keys, and atomic transactions.
+"""
+from __future__ import annotations
+
+import os
+import sqlite3
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any, Generator, List, Optional, Tuple, Union
+
+
+class DatabaseManager:
+    """Manages SQLite database connections, schema migrations, and transactions."""
+
+    def __init__(self, db_path: Optional[Union[str, Path]] = None):
+        if db_path is not None:
+            if isinstance(db_path, str) and db_path == ":memory:":
+                self.db_path = ":memory:"
+            else:
+                self.db_path = Path(db_path)
+        elif os.environ.get("DB_PATH"):
+            self.db_path = Path(os.environ["DB_PATH"])
+        elif os.environ.get("VERCEL"):
+            # On Vercel serverless functions, root filesystem is read-only.
+            # Use /tmp directory for writable SQLite database.
+            self.db_path = Path("/tmp/agri_erp.db")
+        else:
+            # Default to data/agri_erp.db relative to project root
+            base_dir = Path(__file__).resolve().parent.parent.parent
+            self.db_path = base_dir / "data" / "agri_erp.db"
+
+        if self.db_path != ":memory:":
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def get_connection(self) -> sqlite3.Connection:
+        """Create and configure a new SQLite connection."""
+        conn = sqlite3.connect(
+            str(self.db_path),
+            timeout=30.0,
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        )
+        conn.row_factory = sqlite3.Row
+        
+        # Configure SQLite pragmas for maximum integrity & offline desktop performance
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON;")
+        if self.db_path != ":memory:":
+            cursor.execute("PRAGMA journal_mode = WAL;")
+            cursor.execute("PRAGMA synchronous = NORMAL;")
+            cursor.execute("PRAGMA busy_timeout = 5000;")
+        cursor.close()
+        return conn
+
+    def initialize_database(self, include_seed: bool = True) -> None:
+        """Runs the schema DDL and optional seed data on the database."""
+        current_dir = Path(__file__).resolve().parent
+        schema_file = current_dir / "schema.sql"
+        seed_file = current_dir / "seed.sql"
+
+        if not schema_file.exists():
+            raise FileNotFoundError(f"Schema file not found at {schema_file}")
+
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            with open(schema_file, "r", encoding="utf-8") as f:
+                schema_sql = f.read()
+            cursor.executescript(schema_sql)
+
+            if include_seed and seed_file.exists():
+                with open(seed_file, "r", encoding="utf-8") as f:
+                    seed_sql = f.read()
+                cursor.executescript(seed_sql)
+            conn.commit()
+
+    @contextmanager
+    def transaction(self) -> Generator[sqlite3.Connection, None, None]:
+        """Atomic transaction context manager. Commits on success, rolls back on error."""
+        conn = self.get_connection()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def execute_query(self, sql: str, params: Union[Tuple, List] = ()) -> int:
+        """Execute an INSERT, UPDATE, or DELETE query and return the lastrowid or rowcount."""
+        with self.transaction() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            return cursor.lastrowid or cursor.rowcount
+
+    def fetch_one(self, sql: str, params: Union[Tuple, List] = ()) -> Optional[sqlite3.Row]:
+        """Fetch a single record as sqlite3.Row."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            return cursor.fetchone()
+        finally:
+            conn.close()
+
+    def fetch_all(self, sql: str, params: Union[Tuple, List] = ()) -> List[sqlite3.Row]:
+        """Fetch all matching records as a list of sqlite3.Row."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
+
+# Default singleton instance for convenience
+_default_db_manager: Optional[DatabaseManager] = None
+
+
+def get_db_manager(db_path: Optional[Union[str, Path]] = None) -> DatabaseManager:
+    """Get or create the global DatabaseManager instance."""
+    global _default_db_manager
+    if db_path is not None:
+        return DatabaseManager(db_path)
+    if _default_db_manager is None:
+        _default_db_manager = DatabaseManager()
+    return _default_db_manager
+
+
+@contextmanager
+def transaction(db_path: Optional[Union[str, Path]] = None) -> Generator[sqlite3.Connection, None, None]:
+    """Shortcut context manager for transactions using the default or specified database."""
+    manager = get_db_manager(db_path)
+    with manager.transaction() as conn:
+        yield conn
