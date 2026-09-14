@@ -691,7 +691,8 @@ function populateStockProductDropdown() {
         allProducts.map(p => `<option value="${p.product_id}">${p.product_name} (${p.category_name || ''} • ${p.unit_symbol || ''})</option>`).join("");
 }
 
-function openAddStockModal(productId = null, batchNo = "", purRate = 0, saleRate = 0, mrp = 0, expDate = "") {
+async function openAddStockModal(productId = null, batchNo = "", purRate = 0, saleRate = 0, mrp = 0, expDate = "") {
+    await refreshProductList();
     populateStockProductDropdown();
     const modal = document.getElementById("modal-add-stock");
     if (!modal) return;
@@ -747,7 +748,7 @@ function onStockProductChanged() {
     const prodId = Number(document.getElementById("stock-prod-select")?.value);
     if (!prodId) return;
 
-    const prod = allProducts.find(p => p.product_id === prodId);
+    const prod = allProducts.find(p => Number(p.product_id) === prodId);
     if (!prod) return;
 
     const purInput = document.getElementById("stock-add-pur-rate");
@@ -757,7 +758,7 @@ function onStockProductChanged() {
 
     if (purInput) purInput.value = prod.default_purchase_rate || 0;
     if (saleInput) saleInput.value = prod.default_sale_rate || 0;
-    if (mrpInput) mrpInput.value = prod.mrp || prod.default_sale_rate || 0;
+    if (mrpInput) mrpInput.value = prod.default_mrp || prod.default_sale_rate || 0;
 
     if (batchInput && !batchInput.value) {
         const todayNum = new Date().toISOString().slice(2,10).replace(/-/g, "");
@@ -812,14 +813,14 @@ async function submitAddDirectStock() {
         if (res.ok && data.success) {
             alert(`✓ ${data.message || "स्टॉक यशस्वीरीत्या जमा झाला आहे!"}`);
             closeAddStockModal();
-            await loadInventory();
             await refreshProductList();
+            await loadInventory();
+            await loadMasterTables();
         } else {
             alert("त्रुटी: " + (data.detail || "स्टॉक जमा करता आला नाही."));
         }
     } catch (err) {
-        console.error("Failed to add stock:", err);
-        alert("सर्व्हरशी संपर्क होऊ शकला नाही: " + err.message);
+        alert("Network error: " + err.message);
     } finally {
         if (btnSubmit) {
             btnSubmit.disabled = false;
@@ -1034,7 +1035,9 @@ async function createMasterProduct() {
             document.getElementById("m-prod-sale-rate").value = "0";
             document.getElementById("m-prod-mrp").value = "0";
             if (document.getElementById("m-prod-alert")) document.getElementById("m-prod-alert").value = "5";
+            await refreshProductList();
             await loadMasterTables();
+            populateStockProductDropdown();
         } else {
             const err = await res.json();
             alert("Failed to save product: " + (err.detail || "Server error"));

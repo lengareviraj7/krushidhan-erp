@@ -4,6 +4,7 @@ SQLite Database Connection Manager with WAL mode, foreign keys, and atomic trans
 from __future__ import annotations
 
 import os
+import shutil
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,6 +15,9 @@ class DatabaseManager:
     """Manages SQLite database connections, schema migrations, and transactions."""
 
     def __init__(self, db_path: Optional[Union[str, Path]] = None):
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        self.bundled_db = base_dir / "data" / "agri_erp.db"
+
         if db_path is not None:
             if isinstance(db_path, str) and db_path == ":memory:":
                 self.db_path = ":memory:"
@@ -25,16 +29,21 @@ class DatabaseManager:
             # On Vercel serverless functions, root filesystem is read-only.
             # Use /tmp directory for writable SQLite database.
             self.db_path = Path("/tmp/agri_erp.db")
+            if not self.db_path.exists() or self.db_path.stat().st_size == 0:
+                if self.bundled_db.exists() and self.bundled_db.stat().st_size > 0:
+                    try:
+                        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(self.bundled_db), str(self.db_path))
+                    except Exception:
+                        pass
         else:
             # Default to data/agri_erp.db relative to project root
-            base_dir = Path(__file__).resolve().parent.parent.parent
-            self.db_path = base_dir / "data" / "agri_erp.db"
+            self.db_path = self.bundled_db
 
         if self.db_path != ":memory:":
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def get_connection(self) -> sqlite3.Connection:
-        """Create and configure a new SQLite connection."""
+    def _create_raw_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(
             str(self.db_path),
             timeout=30.0,
@@ -52,6 +61,26 @@ class DatabaseManager:
         cursor.close()
         return conn
 
+    def get_connection(self) -> sqlite3.Connection:
+        """Create and configure a new SQLite connection."""
+        conn = self._create_raw_connection()
+        
+        # Auto-verify that essential tables exist; if not, initialize schema + seed
+        if self.db_path != ":memory:":
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='products' LIMIT 1;")
+                has_tables = cur.fetchone()
+                cur.close()
+                if not has_tables:
+                    conn.close()
+                    self.initialize_database(include_seed=True)
+                    return self._create_raw_connection()
+            except Exception:
+                pass
+
+        return conn
+
     def initialize_database(self, include_seed: bool = True) -> None:
         """Runs the schema DDL and optional seed data on the database."""
         current_dir = Path(__file__).resolve().parent
@@ -61,7 +90,8 @@ class DatabaseManager:
         if not schema_file.exists():
             raise FileNotFoundError(f"Schema file not found at {schema_file}")
 
-        with self.get_connection() as conn:
+        conn = self._create_raw_connection()
+        try:
             cursor = conn.cursor()
             with open(schema_file, "r", encoding="utf-8") as f:
                 schema_sql = f.read()
@@ -72,6 +102,9 @@ class DatabaseManager:
                     seed_sql = f.read()
                 cursor.executescript(seed_sql)
             conn.commit()
+            cursor.close()
+        finally:
+            conn.close()
 
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Connection, None, None]:

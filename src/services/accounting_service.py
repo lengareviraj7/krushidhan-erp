@@ -521,13 +521,13 @@ class AccountingService:
         )
         cash_sales = float(cash_sales_row["total"]) if cash_sales_row else 0.0
 
-        # 2. Farmer Receipts in Cash
+        # 2. Farmer Receipts in Cash (Debit Cash in Hand Account 1)
         farmer_receipts_row = self.db.fetch_one(
             """
-            SELECT COALESCE(SUM(v.total_amount), 0) as total 
+            SELECT COALESCE(SUM(DISTINCT v.total_amount), 0) as total 
             FROM vouchers v 
             JOIN ledger_entries le ON v.voucher_id = le.voucher_id
-            WHERE v.voucher_date = ? AND v.voucher_type = 'RECEIPT' AND v.narration LIKE '%CASH%';
+            WHERE v.voucher_date = ? AND v.voucher_type = 'RECEIPT' AND le.account_id = 1 AND le.debit_amount > 0;
             """,
             (date_str,),
         )
@@ -544,12 +544,13 @@ class AccountingService:
         )
         cash_expenses = float(cash_exp_row["total"]) if cash_exp_row else 0.0
 
-        # 4. Cash Supplier Payments
+        # 4. Cash Supplier Payments (Credit Cash in Hand Account 1)
         cash_supp_row = self.db.fetch_one(
             """
-            SELECT COALESCE(SUM(v.total_amount), 0) as total 
+            SELECT COALESCE(SUM(DISTINCT v.total_amount), 0) as total 
             FROM vouchers v 
-            WHERE v.voucher_date = ? AND v.voucher_type = 'PAYMENT' AND v.narration LIKE '%CASH%';
+            JOIN ledger_entries le ON v.voucher_id = le.voucher_id
+            WHERE v.voucher_date = ? AND v.voucher_type = 'PAYMENT' AND le.account_id = 1 AND le.credit_amount > 0;
             """,
             (date_str,),
         )

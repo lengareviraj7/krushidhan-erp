@@ -134,7 +134,7 @@ class InventoryService:
 
         pur_rate = float(purchase_rate) if purchase_rate is not None and purchase_rate > 0 else float(product["default_purchase_rate"] or 0.0)
         s_rate = float(sale_rate) if sale_rate is not None and sale_rate > 0 else float(product["default_sale_rate"] or 0.0)
-        m_rate = float(mrp) if mrp is not None and mrp > 0 else float(product["mrp"] or s_rate)
+        m_rate = float(mrp) if mrp is not None and mrp > 0 else float(product["default_mrp"] or s_rate)
 
         with self.db.transaction() as conn:
             batch = StockBatch(
