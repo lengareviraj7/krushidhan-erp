@@ -79,6 +79,49 @@ def test_inventory_alerts_api(client):
     assert isinstance(low_res.json(), list)
 
 
+def test_direct_add_stock_api(client):
+    """Test directly adding stock via POST /api/inventory/add-stock."""
+    import uuid
+    uid = uuid.uuid4().hex[:6]
+    batch_code = f"BATCH-TEST-{uid}"
+
+    # First get product list
+    prod_res = client.get("/api/masters/products")
+    assert prod_res.status_code == 200
+    products = prod_res.json()
+    assert len(products) > 0
+    prod_id = products[0]["product_id"]
+
+    # Add 25 units of stock directly
+    add_res = client.post(
+        "/api/inventory/add-stock",
+        json={
+            "product_id": prod_id,
+            "qty": 25.0,
+            "batch_no": batch_code,
+            "purchase_rate": 500.0,
+            "sale_rate": 600.0,
+            "mrp": 650.0,
+            "exp_date": "2027-12-31",
+            "remarks": "Test Direct Addition",
+        },
+    )
+    assert add_res.status_code == 200
+    data = add_res.json()
+    assert data["success"] is True
+    assert data["added_qty"] == 25.0
+    assert data["batch_no"] == batch_code
+
+    # Verify stock summary reflects the new batch
+    summary_res = client.get("/api/inventory/stock-summary")
+    assert summary_res.status_code == 200
+    batches = [b for b in summary_res.json() if b["batch_no"] == batch_code]
+    assert len(batches) == 1
+    assert batches[0]["current_qty"] == 25.0
+
+
+
+
 def test_system_settings_api(client):
     """Test fetching and updating system settings via API."""
     get_res = client.get("/api/system/settings")

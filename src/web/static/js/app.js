@@ -587,27 +587,14 @@ async function submitPurchase() {
     }
 }
 
-// ----------------- Inventory Tab -----------------
+// ----------------- Inventory Tab & Stock Management -----------------
+let rawInventoryItems = [];
+
 async function loadInventory() {
     try {
         const res = await fetch("/api/inventory/stock-summary");
-        const items = await res.json();
-        const tbody = document.getElementById("inv-table-tbody");
-        if (!tbody) return;
-
-        tbody.innerHTML = items.map(item => `
-            <tr>
-                <td><b>${item.product_name}</b></td>
-                <td>${item.category_name||'-'}</td>
-                <td>${item.manufacturer_name||'-'}</td>
-                <td><span class="badge badge-fefo">${item.batch_no}</span></td>
-                <td>${item.exp_date||'-'}</td>
-                <td class="text-center font-bold"><b>${item.current_qty} ${item.unit_symbol||''}</b></td>
-                <td class="text-right">₹${item.purchase_rate.toFixed(2)}</td>
-                <td class="text-right">₹${item.sale_rate.toFixed(2)}</td>
-                <td class="text-right">₹${item.purchase_value.toFixed(2)}</td>
-            </tr>
-        `).join("");
+        rawInventoryItems = await res.json();
+        filterInventoryTable();
 
         // Load Expiry Alerts
         const alertRes = await fetch("/api/inventory/expiry-alerts?days=90");
@@ -618,16 +605,215 @@ async function loadInventory() {
                 alertBox.innerHTML = '<span class="badge badge-success">✓ No products expiring within 90 days.</span>';
             } else {
                 alertBox.innerHTML = alerts.map(a => `
-                    <span class="badge badge-expiring" style="margin-right: 6px; padding: 4px 8px;">
+                    <span class="badge badge-expiring" style="margin-right: 6px; padding: 4px 8px; display: inline-block; margin-bottom: 4px;">
                         ⚠️ <b>${a.product_name}</b> (Batch: ${a.batch_no}) Exp: ${a.exp_date} (In ${a.days_to_expiry} days) - Stock: ${a.current_qty}
                     </span>
                 `).join("");
             }
         }
     } catch (err) {
-        console.error(err);
+        console.error("Failed to load inventory:", err);
     }
 }
+
+function filterInventoryTable() {
+    const tbody = document.getElementById("inv-table-tbody");
+    if (!tbody) return;
+
+    const catFilter = document.getElementById("inv-filter-cat")?.value || "";
+    const search = document.getElementById("inv-search-input")?.value.trim().toLowerCase() || "";
+
+    let filtered = rawInventoryItems || [];
+    if (catFilter) {
+        filtered = filtered.filter(item => String(item.category_id) === String(catFilter));
+    }
+    if (search) {
+        filtered = filtered.filter(item => 
+            (item.product_name || "").toLowerCase().includes(search) ||
+            (item.batch_no || "").toLowerCase().includes(search) ||
+            (item.manufacturer_name || "").toLowerCase().includes(search) ||
+            (item.category_name || "").toLowerCase().includes(search)
+        );
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted" style="padding: 20px;">No stock records found matching filters. Click <b>+ Add Stock</b> to add new inventory.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(item => `
+        <tr>
+            <td><b>${item.product_name}</b></td>
+            <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:11px;">${item.category_name || '-'}</span></td>
+            <td>${item.manufacturer_name || '-'}</td>
+            <td><span class="badge badge-fefo">${item.batch_no}</span></td>
+            <td>${item.exp_date || '-'}</td>
+            <td class="text-center font-bold" style="color: ${item.current_qty <= 5 ? '#dc2626' : '#15803d'}; font-size: 13.5px;">
+                <b>${item.current_qty}</b> ${item.unit_symbol || ''}
+            </td>
+            <td class="text-right">₹${Number(item.purchase_rate || 0).toFixed(2)}</td>
+            <td class="text-right" style="font-weight:600; color:#047857;">₹${Number(item.sale_rate || 0).toFixed(2)}</td>
+            <td class="text-right" style="font-weight:700;">₹${Number(item.purchase_value || 0).toFixed(2)}</td>
+            <td class="text-center">
+                <button class="btn btn-primary btn-sm" onclick="openAddStockModal(${item.product_id}, '${item.batch_no}', ${item.purchase_rate || 0}, ${item.sale_rate || 0}, ${item.mrp || item.sale_rate || 0}, '${item.exp_date || ''}')" style="padding: 3px 8px; font-size: 11px;">
+                    + Add Qty
+                </button>
+            </td>
+        </tr>
+    `).join("");
+}
+
+// ----------------- Add Direct Stock Modal Logic -----------------
+function populateStockProductDropdown() {
+    const sel = document.getElementById("stock-prod-select");
+    if (!sel) return;
+
+    if (!allProducts || allProducts.length === 0) {
+        sel.innerHTML = '<option value="">No products available. Please add products in catalog first.</option>';
+        return;
+    }
+
+    sel.innerHTML = '<option value="">-- Select Product (उत्पाद निवडा) --</option>' + 
+        allProducts.map(p => `<option value="${p.product_id}">${p.product_name} (${p.category_name || ''} • ${p.unit_symbol || ''})</option>`).join("");
+}
+
+function openAddStockModal(productId = null, batchNo = "", purRate = 0, saleRate = 0, mrp = 0, expDate = "") {
+    populateStockProductDropdown();
+    const modal = document.getElementById("modal-add-stock");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    const prodSelect = document.getElementById("stock-prod-select");
+    const qtyInput = document.getElementById("stock-add-qty");
+    const batchInput = document.getElementById("stock-add-batch");
+    const purInput = document.getElementById("stock-add-pur-rate");
+    const saleInput = document.getElementById("stock-add-sale-rate");
+    const mrpInput = document.getElementById("stock-add-mrp");
+    const expInput = document.getElementById("stock-add-exp");
+    const mfgInput = document.getElementById("stock-add-mfg");
+    const remarksInput = document.getElementById("stock-add-remarks");
+
+    qtyInput.value = "";
+    remarksInput.value = "Direct Stock Addition";
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (mfgInput) mfgInput.value = todayStr;
+
+    if (productId) {
+        prodSelect.value = productId;
+        batchInput.value = batchNo || "";
+        purInput.value = purRate || "";
+        saleInput.value = saleRate || "";
+        mrpInput.value = mrp || "";
+        expInput.value = (expDate && expDate !== "-") ? expDate : "";
+    } else {
+        prodSelect.value = "";
+        batchInput.value = "";
+        purInput.value = "";
+        saleInput.value = "";
+        mrpInput.value = "";
+        expInput.value = "";
+    }
+
+    setTimeout(() => {
+        if (productId) {
+            qtyInput.focus();
+        } else {
+            prodSelect.focus();
+        }
+    }, 150);
+}
+
+function closeAddStockModal() {
+    const modal = document.getElementById("modal-add-stock");
+    if (modal) modal.style.display = "none";
+}
+
+function onStockProductChanged() {
+    const prodId = Number(document.getElementById("stock-prod-select")?.value);
+    if (!prodId) return;
+
+    const prod = allProducts.find(p => p.product_id === prodId);
+    if (!prod) return;
+
+    const purInput = document.getElementById("stock-add-pur-rate");
+    const saleInput = document.getElementById("stock-add-sale-rate");
+    const mrpInput = document.getElementById("stock-add-mrp");
+    const batchInput = document.getElementById("stock-add-batch");
+
+    if (purInput) purInput.value = prod.default_purchase_rate || 0;
+    if (saleInput) saleInput.value = prod.default_sale_rate || 0;
+    if (mrpInput) mrpInput.value = prod.mrp || prod.default_sale_rate || 0;
+
+    if (batchInput && !batchInput.value) {
+        const todayNum = new Date().toISOString().slice(2,10).replace(/-/g, "");
+        batchInput.value = `STK-${todayNum}-${prodId}`;
+    }
+}
+
+async function submitAddDirectStock() {
+    const prodId = Number(document.getElementById("stock-prod-select")?.value);
+    const qty = parseFloat(document.getElementById("stock-add-qty")?.value || "0");
+    const batchNo = document.getElementById("stock-add-batch")?.value.trim() || "";
+    const purRate = parseFloat(document.getElementById("stock-add-pur-rate")?.value || "0");
+    const saleRate = parseFloat(document.getElementById("stock-add-sale-rate")?.value || "0");
+    const mrp = parseFloat(document.getElementById("stock-add-mrp")?.value || "0");
+    const expDate = document.getElementById("stock-add-exp")?.value || null;
+    const mfgDate = document.getElementById("stock-add-mfg")?.value || null;
+    const remarks = document.getElementById("stock-add-remarks")?.value.trim() || "Manual Stock Addition";
+    const btnSubmit = document.getElementById("btn-save-stock");
+
+    if (!prodId) {
+        alert("कृपया Product निवडा (Please select a product).");
+        return;
+    }
+    if (!qty || qty <= 0) {
+        alert("कृपया 0 पेक्षा जास्त संख्या टाका (Quantity must be greater than 0).");
+        return;
+    }
+
+    if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "⏳ सेव्ह होत आहे...";
+    }
+
+    try {
+        const res = await fetch("/api/inventory/add-stock", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                product_id: prodId,
+                qty: qty,
+                batch_no: batchNo || null,
+                purchase_rate: purRate,
+                sale_rate: saleRate,
+                mrp: mrp,
+                mfg_date: mfgDate,
+                exp_date: expDate,
+                remarks: remarks
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert(`✓ ${data.message || "स्टॉक यशस्वीरीत्या जमा झाला आहे!"}`);
+            closeAddStockModal();
+            await loadInventory();
+            await refreshProductList();
+        } else {
+            alert("त्रुटी: " + (data.detail || "स्टॉक जमा करता आला नाही."));
+        }
+    } catch (err) {
+        console.error("Failed to add stock:", err);
+        alert("सर्व्हरशी संपर्क होऊ शकला नाही: " + err.message);
+    } finally {
+        if (btnSubmit) {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "+ Save Stock (स्टॉक सेव्ह करा)";
+        }
+    }
+}
+
 
 // ----------------- Accounts & Day Book Tab -----------------
 async function loadDayBook() {

@@ -106,3 +106,74 @@ class InventoryService:
         """
         rows = self.db.fetch_all(sql)
         return [dict(r) for r in rows]
+
+    def add_direct_stock(
+        self,
+        product_id: int,
+        qty: float,
+        batch_no: Optional[str] = None,
+        purchase_rate: Optional[float] = None,
+        sale_rate: Optional[float] = None,
+        mrp: Optional[float] = None,
+        mfg_date: Optional[str] = None,
+        exp_date: Optional[str] = None,
+        remarks: Optional[str] = "Manual Stock Addition",
+    ) -> Dict[str, Any]:
+        """Directly add new or additional stock batch to inventory."""
+        if qty <= 0:
+            raise ValueError("Quantity to add must be greater than 0.")
+
+        product = self.db.fetch_one("SELECT * FROM products WHERE product_id = ?;", (product_id,))
+        if not product:
+            raise ValueError(f"Product with ID {product_id} does not exist.")
+
+        batch_code = (batch_no or "").strip()
+        if not batch_code:
+            today_str = datetime.now().strftime("%y%m%d")
+            batch_code = f"STK-{today_str}-{product_id}"
+
+        pur_rate = float(purchase_rate) if purchase_rate is not None and purchase_rate > 0 else float(product["default_purchase_rate"] or 0.0)
+        s_rate = float(sale_rate) if sale_rate is not None and sale_rate > 0 else float(product["default_sale_rate"] or 0.0)
+        m_rate = float(mrp) if mrp is not None and mrp > 0 else float(product["mrp"] or s_rate)
+
+        with self.db.transaction() as conn:
+            batch = StockBatch(
+                product_id=product_id,
+                batch_no=batch_code,
+                mfg_date=mfg_date,
+                exp_date=exp_date,
+                purchase_rate=pur_rate,
+                sale_rate=s_rate,
+                mrp=m_rate,
+                opening_qty=0.0,
+                current_qty=qty,
+            )
+            batch_id = self.inv_repo.upsert_batch(batch, conn=conn)
+
+            # Record stock ledger movement
+            ledger_entry = StockLedgerEntry(
+                product_id=product_id,
+                batch_id=batch_id,
+                transaction_type="PURCHASE",
+                reference_type="MANUAL_STOCK_INWARD",
+                reference_id=batch_id,
+                qty_in=qty,
+                qty_out=0.0,
+                balance_qty=qty,
+                rate=pur_rate,
+                remarks=remarks or "Manual Stock Addition",
+            )
+            self.inv_repo.record_stock_movement(ledger_entry, conn=conn)
+
+        return {
+            "success": True,
+            "product_id": product_id,
+            "product_name": product["product_name"],
+            "batch_id": batch_id,
+            "batch_no": batch_code,
+            "added_qty": qty,
+            "purchase_rate": pur_rate,
+            "sale_rate": s_rate,
+            "message": f"Successfully added {qty} stock for {product['product_name']}",
+        }
+

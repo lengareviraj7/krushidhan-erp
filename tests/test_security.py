@@ -89,6 +89,10 @@ def test_authenticated_api_access_allowed(client):
 
 def test_operator_rbac_restrictions(client):
     """Ensure operator cannot access admin-only endpoints like user management."""
+    import uuid
+    uid = uuid.uuid4().hex[:6]
+    op_user = f"op_{uid}"
+
     # Login as admin to create an operator
     admin_login = client.post("/api/auth/login", json={"username": "admin", "password": "krushidhan@2026"})
     admin_token = admin_login.json()["token"]
@@ -98,12 +102,12 @@ def test_operator_rbac_restrictions(client):
     create_res = client.post(
         "/api/auth/users",
         headers=admin_headers,
-        json={"username": "operator1", "password": "pass1234", "full_name": "Counter Boy", "role": "OPERATOR"},
+        json={"username": op_user, "password": "pass1234", "full_name": "Counter Boy", "role": "OPERATOR"},
     )
     assert create_res.status_code == 200
 
     # Login as operator
-    op_login = client.post("/api/auth/login", json={"username": "operator1", "password": "pass1234"})
+    op_login = client.post("/api/auth/login", json={"username": op_user, "password": "pass1234"})
     assert op_login.status_code == 200
     op_token = op_login.json()["token"]
     op_headers = {"Authorization": f"Bearer {op_token}"}
@@ -111,6 +115,7 @@ def test_operator_rbac_restrictions(client):
     # Operator trying to access user management -> 403 Forbidden
     user_mgmt_res = client.get("/api/auth/users", headers=op_headers)
     assert user_mgmt_res.status_code == 403
+
 
     # Operator CAN access POS Next invoice
     pos_res = client.get("/api/sales/next-invoice-no", headers=op_headers)
