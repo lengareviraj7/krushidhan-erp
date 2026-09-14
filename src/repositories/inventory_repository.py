@@ -168,7 +168,7 @@ class InventoryRepository(BaseRepository):
         return float(row["total"]) if row else 0.0
 
     def get_stock_inventory_summary(self, category_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Get complete stock report with product details, batch numbers, expiry dates, and valuations."""
+        """Get complete stock report with product details, batch numbers, expiry dates, and valuations (including newly added catalog products)."""
         sql = """
             SELECT 
                 p.product_id,
@@ -178,22 +178,23 @@ class InventoryRepository(BaseRepository):
                 m.manufacturer_name,
                 u.symbol as unit_symbol,
                 sb.batch_id,
-                sb.batch_no,
+                COALESCE(sb.batch_no, 'N/A') as batch_no,
                 sb.mfg_date,
                 sb.exp_date,
-                sb.purchase_rate,
-                sb.sale_rate,
-                sb.mrp,
-                sb.current_qty,
-                (sb.current_qty * sb.purchase_rate) as purchase_value,
-                (sb.current_qty * sb.sale_rate) as sale_value
-            FROM stock_batches sb
-            JOIN products p ON sb.product_id = p.product_id
+                COALESCE(sb.purchase_rate, p.default_purchase_rate, 0.0) as purchase_rate,
+                COALESCE(sb.sale_rate, p.default_sale_rate, 0.0) as sale_rate,
+                COALESCE(sb.mrp, p.default_mrp, 0.0) as mrp,
+                COALESCE(sb.current_qty, 0.0) as current_qty,
+                (COALESCE(sb.current_qty, 0.0) * COALESCE(sb.purchase_rate, p.default_purchase_rate, 0.0)) as purchase_value,
+                (COALESCE(sb.current_qty, 0.0) * COALESCE(sb.sale_rate, p.default_sale_rate, 0.0)) as sale_value
+            FROM products p
+            LEFT JOIN stock_batches sb ON p.product_id = sb.product_id AND sb.current_qty > 0
             LEFT JOIN categories c ON p.category_id = c.category_id
             LEFT JOIN manufacturers m ON p.manufacturer_id = m.manufacturer_id
             LEFT JOIN units u ON p.unit_id = u.unit_id
-            WHERE sb.current_qty > 0 AND (? IS NULL OR p.category_id = ?)
+            WHERE p.is_active = 1 AND (? IS NULL OR p.category_id = ?)
             ORDER BY p.product_name ASC, sb.exp_date ASC;
         """
         rows = self.db.fetch_all(sql, (category_id, category_id))
         return [dict(r) for r in rows]
+

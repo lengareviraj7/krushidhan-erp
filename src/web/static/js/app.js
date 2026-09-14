@@ -748,6 +748,9 @@ let rawInventoryItems = [];
 
 async function loadInventory() {
     try {
+        await refreshProductList();
+        populateStockProductDropdown();
+
         const res = await fetch("/api/inventory/stock-summary");
         rawInventoryItems = await res.json();
         filterInventoryTable();
@@ -797,26 +800,37 @@ function filterInventoryTable() {
         return;
     }
 
-    tbody.innerHTML = filtered.map(item => `
-        <tr>
-            <td><b>${item.product_name}</b></td>
-            <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:11px;">${item.category_name || '-'}</span></td>
-            <td>${item.manufacturer_name || '-'}</td>
-            <td><span class="badge badge-fefo">${item.batch_no}</span></td>
-            <td>${item.exp_date || '-'}</td>
-            <td class="text-center font-bold" style="color: ${item.current_qty <= 5 ? '#dc2626' : '#15803d'}; font-size: 13.5px;">
-                <b>${item.current_qty}</b> ${item.unit_symbol || ''}
-            </td>
-            <td class="text-right">₹${Number(item.purchase_rate || 0).toFixed(2)}</td>
-            <td class="text-right" style="font-weight:600; color:#047857;">₹${Number(item.sale_rate || 0).toFixed(2)}</td>
-            <td class="text-right" style="font-weight:700;">₹${Number(item.purchase_value || 0).toFixed(2)}</td>
-            <td class="text-center">
-                <button class="btn btn-primary btn-sm" onclick="openAddStockModal(${item.product_id}, '${item.batch_no}', ${item.purchase_rate || 0}, ${item.sale_rate || 0}, ${item.mrp || item.sale_rate || 0}, '${item.exp_date || ''}')" style="padding: 3px 8px; font-size: 11px;">
-                    + Add Qty
-                </button>
-            </td>
-        </tr>
-    `).join("");
+    tbody.innerHTML = filtered.map(item => {
+        const hasStock = item.current_qty > 0 && item.batch_no && item.batch_no !== 'N/A';
+        const batchBadge = hasStock 
+            ? `<span class="badge badge-fefo">${item.batch_no}</span>`
+            : `<span class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700;">स्टॉक नाही (No Batch)</span>`;
+        const expDisplay = hasStock && item.exp_date ? item.exp_date : `<span class="text-muted">-</span>`;
+        const qtyColor = item.current_qty <= 0 ? '#dc2626' : (item.current_qty <= 5 ? '#d97706' : '#15803d');
+        const passBatch = hasStock ? item.batch_no : '';
+        const passExp = hasStock && item.exp_date ? item.exp_date : '';
+
+        return `
+            <tr style="${!hasStock ? 'background: #fffbeb;' : ''}">
+                <td><b>${item.product_name}</b></td>
+                <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:11px;">${item.category_name || '-'}</span></td>
+                <td>${item.manufacturer_name || '-'}</td>
+                <td>${batchBadge}</td>
+                <td>${expDisplay}</td>
+                <td class="text-center font-bold" style="color: ${qtyColor}; font-size: 13.5px;">
+                    <b>${item.current_qty}</b> ${item.unit_symbol || ''}
+                </td>
+                <td class="text-right">₹${Number(item.purchase_rate || 0).toFixed(2)}</td>
+                <td class="text-right" style="font-weight:600; color:#047857;">₹${Number(item.sale_rate || 0).toFixed(2)}</td>
+                <td class="text-right" style="font-weight:700;">₹${Number(item.purchase_value || 0).toFixed(2)}</td>
+                <td class="text-center">
+                    <button class="btn btn-primary btn-sm" onclick="openAddStockModal(${item.product_id}, '${passBatch}', ${item.purchase_rate || 0}, ${item.sale_rate || 0}, ${item.mrp || item.sale_rate || 0}, '${passExp}')" style="padding: 4px 10px; font-size: 11px; font-weight: 700; ${!hasStock ? 'background: #15803d; border-color: #15803d;' : ''}">
+                        ${hasStock ? '+ Add Qty' : '+ Add Stock (स्टॉक भरा)'}
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join("");
 }
 
 // ----------------- Add Direct Stock Modal Logic -----------------
