@@ -10,6 +10,7 @@ from src.api.routes_inventory import router as inventory_router
 from src.api.routes_masters import router as masters_router
 from src.api.routes_purchase import router as purchase_router
 from src.api.routes_sales import router as sales_router
+from src.api.routes_statutory import router as statutory_router
 from src.api.routes_system import router as system_router
 
 api_router = APIRouter()
@@ -24,6 +25,8 @@ api_router.include_router(inventory_router, dependencies=[Depends(get_current_us
 api_router.include_router(masters_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(accounting_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(gst_router, dependencies=[Depends(get_current_user)])
+api_router.include_router(statutory_router, dependencies=[Depends(get_current_user)])
 api_router.include_router(system_router, dependencies=[Depends(get_current_user)])
+
 
 __all__ = ["api_router"]

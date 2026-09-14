@@ -77,6 +77,17 @@ function initDefaultDates() {
     const pnlTo = document.getElementById("pnl-to-date");
     if (pnlFrom && !pnlFrom.value) pnlFrom.value = firstDayMonth;
     if (pnlTo && !pnlTo.value) pnlTo.value = today;
+
+    const statFrom = document.getElementById("stat-from-date");
+    const statTo = document.getElementById("stat-to-date");
+    if (statFrom && !statFrom.value) statFrom.value = firstDayMonth;
+    if (statTo && !statTo.value) statTo.value = today;
+
+    const cdDate = document.getElementById("cd-recon-date");
+    if (cdDate && !cdDate.value) cdDate.value = today;
+
+    const expDate = document.getElementById("acc-exp-date");
+    if (expDate && !expDate.value) expDate.value = today;
 }
 
 // ----------------- Tab Navigation -----------------
@@ -94,14 +105,17 @@ function initTabs() {
 
             // Auto-refresh relevant tab data
             if (targetId === "tab-farmer-status") loadFarmerStatusList();
+            if (targetId === "tab-supplier-khata") loadSupplierKhata();
             if (targetId === "tab-inventory") loadInventory();
-            if (targetId === "tab-accounts") loadDayBook();
+            if (targetId === "tab-accounts") { loadDayBook(); loadCashReconciliation(); }
             if (targetId === "tab-pnl") loadProfitAndLoss();
             if (targetId === "tab-gst") loadGSTR1();
+            if (targetId === "tab-statutory") loadStatutoryRegister();
             if (targetId === "tab-masters") loadMasterTables();
         });
     });
 }
+
 
 // ----------------- Keyboard Shortcuts -----------------
 function initKeyboardShortcuts() {
@@ -1826,4 +1840,520 @@ async function adminResetPassword(userId, username) {
         alert("त्रुटी: " + e.message);
     }
 }
+
+// ============================================================
+// 1. SUPPLIER & DISTRIBUTOR KHATA (कंपनी खाते)
+// ============================================================
+let allSuppliersKhata = [];
+
+async function loadSupplierKhata() {
+    const tbody = document.getElementById("sk-suppliers-tbody");
+    if (!tbody) return;
+
+    try {
+        const res = await fetch("/api/accounting/suppliers");
+        allSuppliersKhata = await res.json();
+        
+        let totalPayable = 0;
+        let totalPurchases = 0;
+
+        allSuppliersKhata.forEach(s => {
+            totalPayable += Number(s.outstanding_payable || 0);
+            totalPurchases += Number(s.total_purchases || 0);
+        });
+
+        const payEl = document.getElementById("sk-total-payable");
+        const purEl = document.getElementById("sk-total-purchases");
+        const countEl = document.getElementById("sk-suppliers-count");
+
+        if (payEl) payEl.textContent = `₹${totalPayable.toFixed(2)}`;
+        if (purEl) purEl.textContent = `₹${totalPurchases.toFixed(2)}`;
+        if (countEl) countEl.textContent = allSuppliersKhata.length;
+
+        filterSupplierList();
+    } catch (err) {
+        console.error("Failed to load supplier khata:", err);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">कंपनी खाते लोड करताना त्रुटी आली.</td></tr>';
+    }
+}
+
+function filterSupplierList() {
+    const tbody = document.getElementById("sk-suppliers-tbody");
+    if (!tbody) return;
+
+    const query = document.getElementById("sk-search-input")?.value.trim().toLowerCase() || "";
+    let filtered = allSuppliersKhata || [];
+
+    if (query) {
+        filtered = filtered.filter(s => 
+            (s.supplier_name || "").toLowerCase().includes(query) ||
+            (s.contact_person || "").toLowerCase().includes(query) ||
+            (s.city || "").toLowerCase().includes(query) ||
+            (s.gstin || "").toLowerCase().includes(query)
+        );
+    }
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted" style="padding: 24px;">No distributors matching search.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(s => `
+        <tr>
+            <td><b>${s.supplier_name}</b></td>
+            <td>${s.contact_person || '-'}</td>
+            <td>${s.city || '-'}</td>
+            <td>${s.mobile || '-'}</td>
+            <td><code>${s.gstin || '-'}</code></td>
+            <td class="text-center"><b>${s.bills_count || 0}</b></td>
+            <td class="text-right font-bold">₹${Number(s.total_purchases || 0).toFixed(2)}</td>
+            <td class="text-right font-bold" style="color: ${s.outstanding_payable > 0 ? '#dc2626' : '#15803d'}; font-size: 14px;">
+                ₹${Number(s.outstanding_payable || 0).toFixed(2)}
+            </td>
+            <td class="text-center">
+                <button class="btn btn-primary btn-sm" onclick="openSupplierPaymentModal(${s.supplier_id}, '${s.supplier_name.replace(/'/g, "\\'")}', ${s.outstanding_payable || 0})" style="padding: 3px 8px; font-size: 11px; margin-right: 4px;">
+                    💵 Pay
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="openSupplierStatementModal(${s.supplier_id})" style="padding: 3px 8px; font-size: 11px;">
+                    📑 Statement
+                </button>
+            </td>
+        </tr>
+    `).join("");
+}
+
+function openSupplierPaymentModal(supplierId, supplierName, currentBalance) {
+    document.getElementById("modal-supplier-payment").style.display = "flex";
+    document.getElementById("sp-supplier-id").value = supplierId;
+    document.getElementById("sp-supplier-name").textContent = supplierName;
+    document.getElementById("sp-current-balance").textContent = `₹${Number(currentBalance || 0).toFixed(2)}`;
+    document.getElementById("sp-pay-amount").value = "";
+    document.getElementById("sp-pay-ref").value = "";
+    document.getElementById("sp-pay-narration").value = "";
+
+    const today = new Date().toISOString().split("T")[0];
+    document.getElementById("sp-pay-date").value = today;
+    setTimeout(() => document.getElementById("sp-pay-amount").focus(), 150);
+}
+
+function closeSupplierPaymentModal() {
+    document.getElementById("modal-supplier-payment").style.display = "none";
+}
+
+async function submitSupplierPayment() {
+    const supplierId = Number(document.getElementById("sp-supplier-id").value);
+    const amount = parseFloat(document.getElementById("sp-pay-amount").value || "0");
+    const paymentDate = document.getElementById("sp-pay-date").value;
+    const paymentMode = document.getElementById("sp-pay-mode").value;
+    const refNo = document.getElementById("sp-pay-ref").value.trim();
+    const narration = document.getElementById("sp-pay-narration").value.trim();
+    const btn = document.getElementById("btn-save-supp-pay");
+
+    if (!amount || amount <= 0) {
+        alert("कृपया वैध पेमेंट रक्कम टाका.");
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ पेमेंट नोंदवत आहे...";
+    }
+
+    try {
+        const res = await fetch("/api/accounting/supplier-payment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                supplier_id: supplierId,
+                amount: amount,
+                payment_date: paymentDate,
+                payment_mode: paymentMode,
+                reference_no: refNo || null,
+                narration: narration || null
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert("✓ कंपनीला दिलेले पेमेंट यशस्वीरीत्या नोंदवले आहे!");
+            closeSupplierPaymentModal();
+            loadSupplierKhata();
+            loadDayBook();
+            loadCashReconciliation();
+        } else {
+            alert("त्रुटी: " + (data.detail || "पेमेंट नोंदवता आले नाही."));
+        }
+    } catch (e) {
+        alert("त्रुटी: " + e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "✓ Record Payment (पेमेंट नोंदवा)";
+        }
+    }
+}
+
+async function openSupplierStatementModal(supplierId) {
+    const modal = document.getElementById("modal-supplier-statement");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    const nameEl = document.getElementById("stmt-supp-name");
+    const metaEl = document.getElementById("stmt-supp-meta");
+    const dueEl = document.getElementById("stmt-supp-due");
+    const purTbody = document.getElementById("stmt-purchases-tbody");
+    const payTbody = document.getElementById("stmt-payments-tbody");
+
+    purTbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Loading purchase bills...</td></tr>';
+    payTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Loading payment history...</td></tr>';
+
+    try {
+        const res = await fetch(`/api/accounting/suppliers/${supplierId}/statement`);
+        if (!res.ok) throw new Error("Failed to load statement");
+        const data = await res.json();
+
+        const s = data.supplier;
+        if (nameEl) nameEl.textContent = s.supplier_name;
+        if (metaEl) metaEl.textContent = `Contact: ${s.contact_person || '-'} • Mobile: ${s.mobile || '-'} • GSTIN: ${s.gstin || '-'}`;
+        if (dueEl) dueEl.textContent = `₹${Number(s.current_balance || 0).toFixed(2)}`;
+
+        // Render Inward Purchases
+        if (!data.purchases || data.purchases.length === 0) {
+            purTbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">कोणतीही खरेदी बिले नाहीत.</td></tr>';
+        } else {
+            purTbody.innerHTML = data.purchases.map(p => `
+                <tr>
+                    <td><b>${p.invoice_no}</b></td>
+                    <td>${p.purchase_date}</td>
+                    <td><span class="badge" style="background:#e0f2fe; color:#0369a1;">${p.payment_mode}</span></td>
+                    <td class="text-right font-bold">₹${Number(p.net_amount).toFixed(2)}</td>
+                    <td class="text-right" style="color:#15803d;">₹${Number(p.paid_amount).toFixed(2)}</td>
+                    <td class="text-right" style="color:#dc2626; font-weight:700;">₹${Number(p.due_amount).toFixed(2)}</td>
+                </tr>
+            `).join("");
+        }
+
+        // Render Payments
+        if (!data.payments || data.payments.length === 0) {
+            payTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">कोणतीही पेमेंट नोंद नाही.</td></tr>';
+        } else {
+            payTbody.innerHTML = data.payments.map(v => `
+                <tr>
+                    <td><b>${v.voucher_no}</b></td>
+                    <td>${v.voucher_date}</td>
+                    <td>${v.narration || v.reference_no || '-'}</td>
+                    <td class="text-right font-bold" style="color:#15803d;">₹${Number(v.total_amount).toFixed(2)}</td>
+                </tr>
+            `).join("");
+        }
+    } catch (e) {
+        console.error("Statement error:", e);
+    }
+}
+
+function closeSupplierStatementModal() {
+    document.getElementById("modal-supplier-statement").style.display = "none";
+}
+
+// ============================================================
+// 2. STATUTORY AGRICULTURE DEPARTMENT REGISTERS (कृषी नोंदवह्या)
+// ============================================================
+let currentStatutoryType = 'fertilizer';
+
+function switchStatutoryRegister(type) {
+    currentStatutoryType = type;
+    document.querySelectorAll(".stat-reg-btn").forEach(btn => btn.className = "btn btn-secondary btn-sm stat-reg-btn");
+
+    const activeBtn = document.getElementById(`btn-stat-${type === 'fertilizer' ? 'fert' : type === 'pesticide' ? 'pest' : 'seed'}`);
+    if (activeBtn) activeBtn.className = "btn btn-primary btn-sm stat-reg-btn active";
+
+    const titleEl = document.getElementById("stat-register-title");
+    const subEl = document.getElementById("stat-register-subtitle");
+    const thead = document.getElementById("stat-table-thead");
+
+    if (type === 'fertilizer') {
+        if (titleEl) titleEl.textContent = "🌱 खत नियंत्रण आदेश (FCO) - खत विक्री नोंदवही";
+        if (subEl) subEl.textContent = "Official statutory register under Fertilizer Control Order (FCO 1985)";
+        if (thead) {
+            thead.innerHTML = `
+                <tr>
+                    <th>Inv No</th>
+                    <th>Date</th>
+                    <th>Farmer Name (शेतकरी नाव)</th>
+                    <th>Village</th>
+                    <th>Fertilizer Particulars</th>
+                    <th>Company</th>
+                    <th>Batch No</th>
+                    <th>Expiry</th>
+                    <th class="text-center">Qty Sold</th>
+                    <th class="text-right">Rate (₹)</th>
+                    <th class="text-right">Total (₹)</th>
+                </tr>
+            `;
+        }
+    } else if (type === 'pesticide') {
+        if (titleEl) titleEl.textContent = "🧪 कीटकनाशक कायदा 1968 - कीटकनाशक व बुरशीनाशक विक्री नोंदवही";
+        if (subEl) subEl.textContent = "Statutory Insecticides and Pesticides Register with Technical Name & CIB/RC Reg Nos";
+        if (thead) {
+            thead.innerHTML = `
+                <tr>
+                    <th>Inv No</th>
+                    <th>Date</th>
+                    <th>Farmer Name (शेतकरी नाव)</th>
+                    <th>Pesticide / Technical Name</th>
+                    <th>CIB/RC Reg No</th>
+                    <th>Company</th>
+                    <th>Batch No</th>
+                    <th>Mfg / Exp Date</th>
+                    <th class="text-center">Qty Sold</th>
+                    <th class="text-right">Rate (₹)</th>
+                    <th class="text-right">Total (₹)</th>
+                </tr>
+            `;
+        }
+    } else if (type === 'seed') {
+        if (titleEl) titleEl.textContent = "🌾 बियाणे कायदा 1966 - प्रमाणित व संकरित बियाणे विक्री नोंदवही";
+        if (subEl) subEl.textContent = "Statutory Seeds Register with Lot Number, Germination validity, and Farmer details";
+        if (thead) {
+            thead.innerHTML = `
+                <tr>
+                    <th>Inv No</th>
+                    <th>Date</th>
+                    <th>Farmer Name (शेतकरी नाव)</th>
+                    <th>Village</th>
+                    <th>Seed Variety (वाण)</th>
+                    <th>Company</th>
+                    <th>Lot / Batch No</th>
+                    <th>Valid Upto</th>
+                    <th class="text-center">Qty Sold</th>
+                    <th class="text-right">Rate (₹)</th>
+                    <th class="text-right">Total (₹)</th>
+                </tr>
+            `;
+        }
+    }
+
+    loadStatutoryRegister();
+}
+
+async function loadStatutoryRegister() {
+    const tbody = document.getElementById("stat-table-tbody");
+    if (!tbody) return;
+
+    const fromDate = document.getElementById("stat-from-date")?.value || "2026-01-01";
+    const toDate = document.getElementById("stat-to-date")?.value || new Date().toISOString().split("T")[0];
+
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted" style="padding: 20px;">नोंदवही तयार होत आहे...</td></tr>';
+
+    try {
+        const endpoint = `/api/statutory/${currentStatutoryType}-register?from_date=${fromDate}&to_date=${toDate}`;
+        const res = await fetch(endpoint);
+        const data = await res.json();
+
+        const countBadge = document.getElementById("stat-records-count");
+        if (countBadge) countBadge.textContent = `${data.length} Records`;
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted" style="padding: 24px;">या कालावधीत कोणतीही विक्री नोंद आढळली नाही.</td></tr>';
+            return;
+        }
+
+        if (currentStatutoryType === 'fertilizer') {
+            tbody.innerHTML = data.map(r => `
+                <tr>
+                    <td><b>${r.invoice_no}</b></td>
+                    <td>${r.sale_date}</td>
+                    <td><b>${r.farmer_name}</b><br><small style="color:#64748b;">${r.farmer_mobile || ''}</small></td>
+                    <td>${r.farmer_village || '-'}</td>
+                    <td><b>${r.fertilizer_name}</b></td>
+                    <td>${r.company_name || '-'}</td>
+                    <td><span class="badge badge-fefo">${r.batch_no || '-'}</span></td>
+                    <td>${r.exp_date || '-'}</td>
+                    <td class="text-center font-bold">${r.qty} ${r.unit_symbol || ''}</td>
+                    <td class="text-right">₹${Number(r.sale_rate).toFixed(2)}</td>
+                    <td class="text-right font-bold">₹${Number(r.total_amount).toFixed(2)}</td>
+                </tr>
+            `).join("");
+        } else if (currentStatutoryType === 'pesticide') {
+            tbody.innerHTML = data.map(r => `
+                <tr>
+                    <td><b>${r.invoice_no}</b></td>
+                    <td>${r.sale_date}</td>
+                    <td><b>${r.farmer_name}</b></td>
+                    <td><b>${r.pesticide_name}</b><br><small style="color:#0284c7;">${r.technical_name || ''}</small></td>
+                    <td><code>${r.cib_rc_reg_no || '-'}</code></td>
+                    <td>${r.company_name || '-'}</td>
+                    <td><span class="badge badge-fefo">${r.batch_no || '-'}</span></td>
+                    <td>${r.exp_date || r.mfg_date || '-'}</td>
+                    <td class="text-center font-bold">${r.qty} ${r.unit_symbol || ''}</td>
+                    <td class="text-right">₹${Number(r.sale_rate).toFixed(2)}</td>
+                    <td class="text-right font-bold">₹${Number(r.total_amount).toFixed(2)}</td>
+                </tr>
+            `).join("");
+        } else if (currentStatutoryType === 'seed') {
+            tbody.innerHTML = data.map(r => `
+                <tr>
+                    <td><b>${r.invoice_no}</b></td>
+                    <td>${r.sale_date}</td>
+                    <td><b>${r.farmer_name}</b></td>
+                    <td>${r.farmer_village || '-'}</td>
+                    <td><b>${r.seed_variety}</b></td>
+                    <td>${r.seed_company || '-'}</td>
+                    <td><span class="badge badge-fefo">${r.lot_no || '-'}</span></td>
+                    <td>${r.valid_upto || '-'}</td>
+                    <td class="text-center font-bold">${r.qty} ${r.unit_symbol || ''}</td>
+                    <td class="text-right">₹${Number(r.sale_rate).toFixed(2)}</td>
+                    <td class="text-right font-bold">₹${Number(r.total_amount).toFixed(2)}</td>
+                </tr>
+            `).join("");
+        }
+    } catch (e) {
+        console.error("Failed to load statutory register:", e);
+        tbody.innerHTML = '<tr><td colspan="11" class="text-center text-danger">त्रुटी आली. कृपया पुन्हा प्रयत्न करा.</td></tr>';
+    }
+}
+
+// ============================================================
+// 3. CASH DRAWER CLOSING & OPERATIONAL EXPENSES
+// ============================================================
+let expectedDrawerCashAmount = 5000.0;
+
+async function loadCashReconciliation() {
+    const today = new Date().toISOString().split("T")[0];
+    const dateInput = document.getElementById("cd-recon-date");
+    const dateStr = dateInput ? dateInput.value || today : today;
+    if (dateInput && !dateInput.value) dateInput.value = today;
+
+    try {
+        const res = await fetch(`/api/accounting/cash-closing-summary?date=${dateStr}`);
+        const data = await res.json();
+
+        document.getElementById("cd-sys-opening").textContent = `₹${data.opening_cash.toFixed(2)}`;
+        document.getElementById("cd-sys-sales").textContent = `₹${data.cash_sales.toFixed(2)}`;
+        document.getElementById("cd-sys-receipts").textContent = `₹${data.farmer_cash_receipts.toFixed(2)}`;
+        document.getElementById("cd-sys-expenses").textContent = `₹${data.cash_expenses.toFixed(2)}`;
+        document.getElementById("cd-sys-supp-payments").textContent = `₹${data.cash_supplier_payments.toFixed(2)}`;
+        document.getElementById("cd-sys-expected").textContent = `₹${data.expected_drawer_cash.toFixed(2)}`;
+
+        expectedDrawerCashAmount = data.expected_drawer_cash;
+        calculatePhysicalCash();
+    } catch (e) {
+        console.error("Cash reconciliation error:", e);
+    }
+}
+
+function calculatePhysicalCash() {
+    const n500 = parseInt(document.getElementById("denom-500")?.value || "0") || 0;
+    const n200 = parseInt(document.getElementById("denom-200")?.value || "0") || 0;
+    const n100 = parseInt(document.getElementById("denom-100")?.value || "0") || 0;
+    const n50 = parseInt(document.getElementById("denom-50")?.value || "0") || 0;
+
+    const totalPhysical = (n500 * 500) + (n200 * 200) + (n100 * 100) + (n50 * 50);
+    const totalEl = document.getElementById("cd-physical-total");
+    const badgeEl = document.getElementById("cd-variance-badge");
+
+    if (totalEl) totalEl.textContent = `₹${totalPhysical.toFixed(2)}`;
+
+    if (!badgeEl) return;
+    if (totalPhysical === 0 && n500 === 0 && n200 === 0 && n100 === 0 && n50 === 0) {
+        badgeEl.textContent = "Enter note counts above to verify closing";
+        badgeEl.style.background = "#e0f2fe";
+        badgeEl.style.color = "#0369a1";
+        return;
+    }
+
+    const diff = totalPhysical - expectedDrawerCashAmount;
+    if (Math.abs(diff) < 0.01) {
+        badgeEl.textContent = "✓ गल्ला ताळेबंद तंतोतंत जुळला! (Exact Match ₹0.00 Variance)";
+        badgeEl.style.background = "#dcfce7";
+        badgeEl.style.color = "#15803d";
+    } else if (diff < 0) {
+        badgeEl.textContent = `⚠️ गल्ल्यात ₹${Math.abs(diff).toFixed(2)} कमी आहेत (Shortage / Deficit)`;
+        badgeEl.style.background = "#fef2f2";
+        badgeEl.style.color = "#dc2626";
+    } else {
+        badgeEl.textContent = `ℹ️ गल्ल्यात ₹${diff.toFixed(2)} जास्त आहेत (Excess Cash)`;
+        badgeEl.style.background = "#fef9c3";
+        badgeEl.style.color = "#854d0e";
+    }
+}
+
+async function submitShopExpense() {
+    const catId = Number(document.getElementById("acc-exp-cat")?.value);
+    const amount = parseFloat(document.getElementById("acc-exp-amt")?.value || "0");
+    const expDate = document.getElementById("acc-exp-date")?.value || new Date().toISOString().split("T")[0];
+    const mode = document.getElementById("acc-exp-mode")?.value || "CASH";
+    const remarks = document.getElementById("acc-exp-remarks")?.value.trim() || "";
+
+    if (!amount || amount <= 0) {
+        alert("कृपया वैध खर्च रक्कम टाका.");
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/accounting/expenses", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                category_id: catId,
+                amount: amount,
+                expense_date: expDate,
+                payment_mode: mode,
+                remarks: remarks
+            })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert("✓ दैनंदिन खर्च यशस्वीरीत्या नोंदवला आहे!");
+            document.getElementById("acc-exp-amt").value = "";
+            document.getElementById("acc-exp-remarks").value = "";
+            loadDayBook();
+            loadCashReconciliation();
+        } else {
+            alert("त्रुटी: " + (data.detail || "खर्च नोंदवता आला नाही."));
+        }
+    } catch (e) {
+        alert("त्रुटी: " + e.message);
+    }
+}
+
+// ============================================================
+// 4. DYNAMIC COUNTER UPI QR CODE GENERATOR
+// ============================================================
+function openCounterUpiQrModal(customAmount = null) {
+    const modal = document.getElementById("modal-counter-upi-qr");
+    if (!modal) return;
+
+    let amount = customAmount;
+    if (amount === null) {
+        const grandTotalText = document.getElementById("pos-grand-total")?.innerText || "0";
+        amount = parseFloat(grandTotalText.replace(/[^0-9.]/g, "")) || 0;
+    }
+
+    const amtDisplay = document.getElementById("upi-qr-amount");
+    if (amtDisplay) amtDisplay.textContent = `₹${amount.toFixed(2)}`;
+
+    // Build standard NPCI UPI payload
+    const upiUri = `upi://pay?pa=9503673620@upi&pn=Shree%20Krushidhan%20Krishi%20Seva%20Kendra&am=${amount.toFixed(2)}&cu=INR&tn=Krushidhan%20Bill`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(upiUri)}`;
+
+    const qrImg = document.getElementById("upi-qr-image");
+    if (qrImg) qrImg.src = qrUrl;
+
+    modal.style.display = "flex";
+}
+
+function closeCounterUpiQrModal() {
+    const modal = document.getElementById("modal-counter-upi-qr");
+    if (modal) modal.style.display = "none";
+}
+
+function onPosPaymentModeChanged() {
+    const mode = document.getElementById("pos-pay-mode")?.value;
+    if (mode === "UPI") {
+        openCounterUpiQrModal();
+    }
+}
+
 

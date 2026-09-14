@@ -37,14 +37,17 @@
     <nav class="nav-tabs">
         <div class="nav-tab active" data-tab="tab-pos">🧾 Counter Billing (POS)</div>
         <div class="nav-tab" data-tab="tab-farmer-status">👨‍🌾 Farmer Status & Khata (शेतकरी खाते)</div>
+        <div class="nav-tab" data-tab="tab-supplier-khata">🏢 Supplier Khata (कंपनी खाते)</div>
         <div class="nav-tab" data-tab="tab-purchase">📥 Inward Purchase</div>
         <div class="nav-tab" data-tab="tab-inventory">📦 Live Stock & Expiry</div>
         <div class="nav-tab" data-tab="tab-accounts">💰 Accounts & Day Book</div>
         <div class="nav-tab" data-tab="tab-pnl">📈 Profit & Loss (नफा-तोटा)</div>
         <div class="nav-tab" data-tab="tab-gst">📊 Statutory GST (GSTR-1)</div>
+        <div class="nav-tab" data-tab="tab-statutory">📜 Statutory Registers (कृषी नोंदवह्या)</div>
         <div class="nav-tab" data-tab="tab-masters">📋 Product Catalog</div>
         <div class="nav-tab" data-tab="tab-settings">⚙️ Shop Profile</div>
     </nav>
+
 
     <!-- Main Content Workspaces -->
     <main>
@@ -165,20 +168,28 @@
 
                         <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 12px 0;">
 
-                        <div class="form-group" style="margin-bottom: 10px;">
-                            <label>Payment Mode</label>
-                            <select id="pos-pay-mode">
-                                <option value="CASH">💵 Cash Counter</option>
-                                <option value="UPI">📱 UPI / QR Code</option>
-                                <option value="CREDIT">⏳ Credit (Udhar / Khata)</option>
-                                <option value="CARD">💳 Debit/Credit Card</option>
-                            </select>
+                        <div class="form-row" style="margin-bottom: 10px;">
+                            <div class="form-group" style="flex: 1.5;">
+                                <label>Payment Mode</label>
+                                <select id="pos-pay-mode" onchange="onPosPaymentModeChanged()">
+                                    <option value="CASH">💵 Cash Counter</option>
+                                    <option value="UPI">📱 UPI / QR Code</option>
+                                    <option value="CREDIT">⏳ Credit (Udhar / Khata)</option>
+                                    <option value="CARD">💳 Debit/Credit Card</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 0.9; align-self: flex-end;">
+                                <button type="button" class="btn btn-primary" onclick="openCounterUpiQrModal()" style="width: 100%; padding: 8px 4px; font-size: 11.5px; background: #0284c7; border-color: #0284c7;" title="Show Dynamic UPI QR">
+                                    📱 Scan QR
+                                </button>
+                            </div>
                         </div>
 
                         <div class="form-group" style="margin-bottom: 10px;">
-                            <label>Amount Received</label>
+                            <label>Amount Received (जमा रक्कम)</label>
                             <input type="number" id="pos-paid-amount" style="font-size: 15px; font-weight: 700; color: var(--primary);">
                         </div>
+
 
                         <div class="form-group" style="margin-bottom: 14px;">
                             <label>Doctor / Officer Recommendation & Remarks</label>
@@ -261,8 +272,64 @@
             </div>
         </div>
 
+        <!-- Supplier & Distributor Khata Workspace -->
+        <div id="tab-supplier-khata" class="tab-pane">
+            <div class="grid-3" style="margin-bottom: 12px;">
+                <div class="card" style="border-left: 4px solid #dc2626;">
+                    <div class="card-title">Total Outstanding to Suppliers (देणी बाकी)</div>
+                    <div id="sk-total-payable" style="font-size: 22px; font-weight: 800; color: #dc2626;">₹0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Total distributor credit payables</div>
+                </div>
+                <div class="card" style="border-left: 4px solid var(--primary);">
+                    <div class="card-title">Total Inward Purchases (एकूण खरेदी)</div>
+                    <div id="sk-total-purchases" style="font-size: 22px; font-weight: 800; color: var(--primary);">₹0.00</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Aggregated company purchases</div>
+                </div>
+                <div class="card" style="border-left: 4px solid #0284c7;">
+                    <div class="card-title">Active Distributors (कंपन्या/वितरक)</div>
+                    <div id="sk-suppliers-count" style="font-size: 22px; font-weight: 800; color: #0284c7;">0</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Bayer, IFFCO, Mahyco, RCF, etc.</div>
+                </div>
+            </div>
+
+            <!-- Supplier Filter Bar -->
+            <div class="card" style="margin-bottom: 12px; padding: 12px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1; min-width: 250px;">
+                        <input type="text" id="sk-search-input" oninput="filterSupplierList()" placeholder="🔍 Search company name, contact person, city, GSTIN..." style="padding: 8px 12px; font-size: 13.5px; width: 100%;">
+                    </div>
+                    <div>
+                        <button class="btn btn-primary" onclick="loadSupplierKhata()" style="font-weight: 700;">🔄 Refresh Khata</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suppliers Table -->
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Company / Supplier Name</th>
+                            <th>Contact Person</th>
+                            <th>City / Location</th>
+                            <th>Mobile</th>
+                            <th>GSTIN</th>
+                            <th class="text-center">Bills Count</th>
+                            <th class="text-right">Total Purchases</th>
+                            <th class="text-right">Outstanding Payable (देणे बाकी)</th>
+                            <th class="text-center" style="width: 190px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sk-suppliers-tbody">
+                        <tr><td colspan="9" class="text-center text-muted" style="padding: 24px;">Loading supplier khata...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- 3. Inward Purchase Workspace -->
         <div id="tab-purchase" class="tab-pane">
+
             <div class="card" style="max-width: 900px; margin: 0 auto;">
                 <div class="card-title">Inward Goods Receipt (Purchase Entry)</div>
                 <div class="form-row">
@@ -397,8 +464,8 @@
 
             <div class="grid-2">
                 <!-- Customer Collection Receipt -->
-                <div class="card">
-                    <div class="card-title">Customer Collection Receipt</div>
+                <div class="card" style="box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                    <div class="card-title">👨‍🌾 Customer Collection Receipt (शेतकरी पावती जमा)</div>
                     <div class="form-group" style="margin-bottom: 10px;">
                         <label>Farmer / Customer</label>
                         <select id="acc-receipt-cust"></select>
@@ -410,35 +477,143 @@
                         </div>
                         <div class="form-group">
                             <label>Amount (₹)</label>
-                            <input type="number" id="acc-receipt-amt" placeholder="Amount received">
+                            <input type="number" id="acc-receipt-amt" placeholder="Amount received" style="font-weight: 700; color: var(--primary);">
                         </div>
                         <div class="form-group">
                             <label>Payment Mode</label>
                             <select id="acc-receipt-mode">
-                                <option value="CASH">Cash</option>
-                                <option value="UPI">UPI</option>
-                                <option value="BANK_TRANSFER">Bank Transfer</option>
+                                <option value="CASH">💵 Cash</option>
+                                <option value="UPI">📱 UPI</option>
+                                <option value="BANK_TRANSFER">🏦 Bank Transfer</option>
                             </select>
                         </div>
                     </div>
-                    <button class="btn btn-success" onclick="submitCustomerReceipt()" style="width: 100%;">Record Customer Receipt</button>
+                    <button class="btn btn-success" onclick="submitCustomerReceipt()" style="width: 100%; font-weight: 700;">✓ Record Customer Receipt</button>
                 </div>
 
-                <!-- Day Book Date Filter -->
-                <div class="card">
-                    <div class="card-title">Day Book Quick Lookup</div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Select Date</label>
-                            <input type="date" id="acc-daybook-date" onchange="loadDayBook()">
+                <!-- Record Operational Shop Expense -->
+                <div class="card" style="box-shadow: 0 2px 6px rgba(0,0,0,0.04);">
+                    <div class="card-title">📝 Record Daily Expense (दुकान दैनंदिन खर्च नोंद)</div>
+                    <div class="form-row" style="margin-bottom: 10px;">
+                        <div class="form-group" style="flex: 1.5;">
+                            <label>Expense Category (खर्च प्रकार)</label>
+                            <select id="acc-exp-cat" style="font-weight: 600;">
+                                <option value="1">Shop Rent (दुकान भाडे)</option>
+                                <option value="3">Staff Salaries & Labor (हमाली/पगार)</option>
+                                <option value="2">Electricity Bill (वीजबिल)</option>
+                                <option value="4">Freight & Transport (वाहतूक खर्च)</option>
+                                <option value="5">Tea & Refreshments (चहा-पाणी)</option>
+                                <option value="6">Stationery & Printing (पावती बुक/टोनर)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label>Amount (रक्कम ₹)</label>
+                            <input type="number" id="acc-exp-amt" placeholder="₹0.00" style="font-weight: 700; color: #dc2626;">
                         </div>
                     </div>
-                    <p class="text-muted" style="margin-top: 10px; font-size: 12px;">
-                        The Day Book aggregates all cash/credit counter sales, inward stock purchases, and operational shop expenses for the selected date.
-                    </p>
+                    <div class="form-row" style="margin-bottom: 10px;">
+                        <div class="form-group">
+                            <label>Date</label>
+                            <input type="date" id="acc-exp-date">
+                        </div>
+                        <div class="form-group">
+                            <label>Payment Mode</label>
+                            <select id="acc-exp-mode">
+                                <option value="CASH">💵 Cash</option>
+                                <option value="UPI">📱 UPI / Online</option>
+                                <option value="BANK_TRANSFER">🏦 Bank Transfer</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Remarks / Note</label>
+                            <input type="text" id="acc-exp-remarks" placeholder="e.g. हमाली खर्च / चहा खर्च">
+                        </div>
+                    </div>
+                    <button class="btn btn-danger" onclick="submitShopExpense()" style="width: 100%; font-weight: 700;">+ Save Expense (खर्च नोंदवा)</button>
+                </div>
+            </div>
+
+            <!-- Evening Cash Drawer Closing & Reconciliation -->
+            <div class="card" style="margin-top: 14px; border-top: 4px solid var(--secondary); box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <div class="card-title" style="margin-bottom: 2px;">💵 दैनिक गल्ला ताळेबंद (Evening Cash Drawer Reconciliation)</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Reconcile physical currency drawer against ERP transactions at closing time</div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="date" id="cd-recon-date" onchange="loadCashReconciliation()" style="padding: 6px 10px; font-size: 13px;">
+                        <button class="btn btn-primary btn-sm" onclick="loadCashReconciliation()">🔄 Refresh</button>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <!-- Left: System Calculated Cash -->
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+                        <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 10px;">1. ERP System Calculated Cash (हिशोबाप्रमाणे रोकड)</div>
+                        
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+                            <span>Opening Base Cash (सकाळची शिल्लक):</span>
+                            <span id="cd-sys-opening" style="font-weight: 600;">₹5,000.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #15803d;">
+                            <span>+ Today's Cash Sales (रोख विक्री):</span>
+                            <span id="cd-sys-sales" style="font-weight: 700;">₹0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #15803d;">
+                            <span>+ Farmer Cash Receipts (शेतकरी रोख जमा):</span>
+                            <span id="cd-sys-receipts" style="font-weight: 700;">₹0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; color: #dc2626;">
+                            <span>- Cash Expenses (रोख खर्च):</span>
+                            <span id="cd-sys-expenses" style="font-weight: 700;">₹0.00</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; color: #dc2626;">
+                            <span>- Cash Supplier Payments (कंपनी रोख अदा):</span>
+                            <span id="cd-sys-supp-payments" style="font-weight: 700;">₹0.00</span>
+                        </div>
+                        <hr style="border: 0; border-top: 1px solid #cbd5e1; margin: 8px 0;">
+                        <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #1e293b;">
+                            <span>Expected Drawer Cash (गल्ल्यात अपेक्षित रोकड):</span>
+                            <span id="cd-sys-expected" style="color: var(--primary);">₹5,000.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Right: Physical Currency Counter -->
+                    <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+                        <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 10px;">2. Physical Note Counting (प्रत्यक्ष नोटा मोजा)</div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">₹500 x Notes</label>
+                                <input type="number" id="denom-500" min="0" oninput="calculatePhysicalCash()" placeholder="0" style="padding: 5px; text-align: center; font-weight: 600;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">₹200 x Notes</label>
+                                <input type="number" id="denom-200" min="0" oninput="calculatePhysicalCash()" placeholder="0" style="padding: 5px; text-align: center; font-weight: 600;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">₹100 x Notes</label>
+                                <input type="number" id="denom-100" min="0" oninput="calculatePhysicalCash()" placeholder="0" style="padding: 5px; text-align: center; font-weight: 600;">
+                            </div>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label style="font-size: 11px;">₹50 / Coins</label>
+                                <input type="number" id="denom-50" min="0" oninput="calculatePhysicalCash()" placeholder="0" style="padding: 5px; text-align: center; font-weight: 600;">
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: #f1f5f9; padding: 8px 12px; border-radius: 6px; margin-bottom: 8px;">
+                            <span style="font-size: 13px; font-weight: 700;">Physical Cash Count:</span>
+                            <span id="cd-physical-total" style="font-size: 16px; font-weight: 800; color: #1e293b;">₹0.00</span>
+                        </div>
+
+                        <div id="cd-variance-badge" style="padding: 8px; border-radius: 6px; text-align: center; font-size: 13px; font-weight: 700; background: #e0f2fe; color: #0369a1;">
+                            Enter note counts above to verify closing
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
+
 
         <!-- 5. Profit & Loss Workspace -->
         <div id="tab-pnl" class="tab-pane">
@@ -644,8 +819,69 @@
             </div>
         </div>
 
+        <!-- Statutory Agriculture Department Registers Workspace -->
+        <div id="tab-statutory" class="tab-pane">
+            <div class="card" style="padding: 12px 16px; margin-bottom: 12px; border-top: 3px solid var(--primary);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm stat-reg-btn active" id="btn-stat-fert" onclick="switchStatutoryRegister('fertilizer')">
+                            🌱 खत विक्री नोंदवही (Fertilizer - FCO)
+                        </button>
+                        <button class="btn btn-secondary btn-sm stat-reg-btn" id="btn-stat-pest" onclick="switchStatutoryRegister('pesticide')">
+                            🧪 कीटकनाशक नोंदवही (Insecticide Act)
+                        </button>
+                        <button class="btn btn-secondary btn-sm stat-reg-btn" id="btn-stat-seed" onclick="switchStatutoryRegister('seed')">
+                            🌾 बियाणे नोंदवही (Seeds Act)
+                        </button>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <input type="date" id="stat-from-date" style="padding: 6px 10px; font-size: 13px;">
+                        <span style="font-size: 13px; color: var(--text-muted);">to</span>
+                        <input type="date" id="stat-to-date" style="padding: 6px 10px; font-size: 13px;">
+                        <button class="btn btn-primary btn-sm" onclick="loadStatutoryRegister()">🔍 Search</button>
+                        <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨️ Print Register</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <div>
+                        <div class="card-title" id="stat-register-title" style="margin-bottom: 2px;">🌱 खत नियंत्रण आदेश (FCO) - खत विक्री नोंदवही</div>
+                        <div style="font-size: 12px; color: var(--text-muted);" id="stat-register-subtitle">Official statutory register for District Quality Control Inspector (कृषी अधिकारी) audit</div>
+                    </div>
+                    <span class="badge badge-success" id="stat-records-count">0 Records</span>
+                </div>
+
+                <div class="table-container" style="max-height: 500px;">
+                    <table>
+                        <thead id="stat-table-thead">
+                            <tr>
+                                <th>Inv No</th>
+                                <th>Date</th>
+                                <th>Farmer Name (शेतकरी नाव)</th>
+                                <th>Village</th>
+                                <th>Fertilizer Particulars</th>
+                                <th>Company</th>
+                                <th>Batch No</th>
+                                <th>Expiry</th>
+                                <th class="text-center">Qty Sold</th>
+                                <th class="text-right">Rate (₹)</th>
+                                <th class="text-right">Total (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stat-table-tbody">
+                            <tr><td colspan="11" class="text-center text-muted" style="padding: 24px;">Select date range and click Search.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- 6. Master Data & Catalog Workspace -->
         <div id="tab-masters" class="tab-pane">
+
             <div class="catalog-grid">
                 <!-- Add New Product Card -->
                 <div class="card" style="box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-top: 4px solid var(--primary); padding: 16px;">
@@ -1112,7 +1348,159 @@
         </div>
     </div>
 
+    <!-- Supplier Payment Modal Dialog -->
+    <div id="modal-supplier-payment" class="modal-backdrop">
+        <div class="modal-dialog" style="width: 480px; max-width: 95%;">
+            <div class="modal-header">
+                <span>🏢 Record Supplier Payment (कंपनीला रक्कम अदा करा)</span>
+                <button class="btn-close" onclick="closeSupplierPaymentModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <form id="supp-pay-form" onsubmit="event.preventDefault(); submitSupplierPayment();">
+                    <input type="hidden" id="sp-supplier-id">
+                    
+                    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+                        <div style="font-size: 11px; color: #166534; font-weight: 700; text-transform: uppercase;">Company / Supplier</div>
+                        <div id="sp-supplier-name" style="font-size: 15px; font-weight: 800; color: #15803d;">-</div>
+                        <div style="font-size: 12px; color: #dc2626; font-weight: 700; margin-top: 2px;">
+                            Current Payable: <span id="sp-current-balance">₹0.00</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label>Payment Amount (अदा केलेली रक्कम ₹) <span style="color:#ef4444;">*</span></label>
+                        <input type="number" id="sp-pay-amount" step="0.01" min="1" placeholder="₹0.00" required style="font-size: 16px; font-weight: 800; color: #dc2626;">
+                    </div>
+
+                    <div class="form-row" style="margin-bottom: 12px;">
+                        <div class="form-group">
+                            <label>Payment Date</label>
+                            <input type="date" id="sp-pay-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Payment Mode</label>
+                            <select id="sp-pay-mode">
+                                <option value="BANK_TRANSFER">🏦 RTGS / NEFT / Bank</option>
+                                <option value="CHEQUE">📝 Cheque (धनादेश)</option>
+                                <option value="UPI">📱 UPI / Online</option>
+                                <option value="CASH">💵 Cash (रोख)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label>Reference No / Cheque No / UTR</label>
+                        <input type="text" id="sp-pay-ref" placeholder="e.g. UTR-99881122 or Cheque No 004123">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label>Narration / Remarks</label>
+                        <input type="text" id="sp-pay-narration" placeholder="e.g. Part payment against fertilizer bill">
+                    </div>
+
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" onclick="closeSupplierPaymentModal()">रद्द करा</button>
+                        <button type="submit" id="btn-save-supp-pay" class="btn btn-success">✓ Record Payment (पेमेंट नोंदवा)</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supplier Statement Modal Dialog -->
+    <div id="modal-supplier-statement" class="modal-backdrop">
+        <div class="modal-dialog" style="width: 800px; max-width: 95%;">
+            <div class="modal-header">
+                <span>📑 Supplier Ledger Statement (कंपनी खातेवही)</span>
+                <button class="btn-close" onclick="closeSupplierStatementModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                    <div>
+                        <div id="stmt-supp-name" style="font-size: 16px; font-weight: 800; color: #1e293b;">-</div>
+                        <div id="stmt-supp-meta" style="font-size: 12px; color: #64748b;">Contact: - | GSTIN: -</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 600;">Net Balance Payable</div>
+                        <div id="stmt-supp-due" style="font-size: 18px; font-weight: 800; color: #dc2626;">₹0.00</div>
+                    </div>
+                </div>
+
+                <div class="card-title" style="margin-top: 8px;">Inward Purchase Bills (खरेदी बिले)</div>
+                <div class="table-container" style="max-height: 220px; margin-bottom: 12px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Invoice No</th>
+                                <th>Date</th>
+                                <th>Mode</th>
+                                <th class="text-right">Bill Total (₹)</th>
+                                <th class="text-right">Paid</th>
+                                <th class="text-right">Due (बाकी)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stmt-purchases-tbody">
+                            <tr><td colspan="6" class="text-center text-muted">No purchase records</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="card-title" style="margin-top: 8px;">Payment Vouchers (अदा केलेली रक्कम इतिहास)</div>
+                <div class="table-container" style="max-height: 180px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Voucher No</th>
+                                <th>Date</th>
+                                <th>Particulars / Ref</th>
+                                <th class="text-right">Amount Paid (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stmt-payments-tbody">
+                            <tr><td colspan="4" class="text-center text-muted">No payment records</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSupplierStatementModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dynamic Counter UPI QR Code Modal Dialog -->
+    <div id="modal-counter-upi-qr" class="modal-backdrop">
+        <div class="modal-dialog" style="width: 380px; max-width: 95%; text-align: center;">
+            <div class="modal-header">
+                <span>📱 Counter UPI QR Code</span>
+                <button class="btn-close" onclick="closeCounterUpiQrModal()">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 20px;">
+                <div style="font-weight: 800; font-size: 16px; color: #15803d; margin-bottom: 4px;">श्री कृषीधन कृषी सेवा केंद्र</div>
+                <div style="font-size: 12px; color: #475569; margin-bottom: 12px;">Google Pay • PhonePe • Paytm • BHIM UPI</div>
+
+                <div style="background: #ffffff; border: 2px solid #22c55e; border-radius: 12px; padding: 16px; display: inline-block; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+                    <img id="upi-qr-image" src="" alt="UPI QR Code" style="width: 200px; height: 200px; display: block; margin: 0 auto;">
+                    <div style="font-size: 18px; font-weight: 800; color: #1e293b; margin-top: 8px;">
+                        Amount: <span id="upi-qr-amount" style="color: #15803d;">₹0.00</span>
+                    </div>
+                </div>
+
+                <div style="font-size: 13px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                    UPI ID: <span style="color: #0284c7;">9503673620@upi</span>
+                </div>
+                <div style="font-size: 11px; color: #64748b;">
+                    👤 प्रोप्रा.: आकाश लेंगारे • श्री कृषीधन कृषी सेवा केंद्र
+                </div>
+            </div>
+            <div class="modal-footer" style="justify-content: center;">
+                <button class="btn btn-secondary" onclick="closeCounterUpiQrModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/app.js"></script>
+
 
 </body>
 </html>

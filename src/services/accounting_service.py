@@ -3,6 +3,7 @@ Service Layer for Accounting Operations, Vouchers, Day Book, and Financial State
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from src.db.connection import DatabaseManager, get_db_manager
 from src.models.accounting import Expense, LedgerEntry, Voucher
@@ -333,3 +334,243 @@ class AccountingService:
                 "margin_pct": margin
             })
         return results
+
+    # ==================== SUPPLIER & DISTRIBUTOR KHATA ====================
+    def get_suppliers_with_balances(self) -> List[Dict[str, Any]]:
+        """Fetch all distributors/suppliers with total purchases, paid amounts, and outstanding payable balances."""
+        sql = """
+            SELECT 
+                s.supplier_id,
+                s.supplier_name,
+                s.contact_person,
+                s.mobile,
+                s.city,
+                s.gstin,
+                s.current_balance as outstanding_payable,
+                COALESCE(SUM(p.net_amount), 0) as total_purchases,
+                COUNT(p.purchase_id) as bills_count
+            FROM suppliers s
+            LEFT JOIN purchases p ON s.supplier_id = p.supplier_id
+            GROUP BY s.supplier_id
+            ORDER BY s.current_balance DESC, s.supplier_name ASC;
+        """
+        rows = self.db.fetch_all(sql)
+        return [dict(r) for r in rows]
+
+    def get_supplier_statement(self, supplier_id: int) -> Dict[str, Any]:
+        """Fetch supplier profile, list of purchase bills, and payment records."""
+        supplier = self.db.fetch_one("SELECT * FROM suppliers WHERE supplier_id = ?;", (supplier_id,))
+        if not supplier:
+            raise ValueError(f"Supplier ID {supplier_id} not found.")
+
+        # Inward Purchase Invoices
+        purchases = self.db.fetch_all(
+            "SELECT purchase_id, invoice_no, purchase_date, net_amount, paid_amount, due_amount, payment_type as payment_mode FROM purchases WHERE supplier_id = ? ORDER BY purchase_date DESC;",
+            (supplier_id,),
+        )
+
+        # Payment Vouchers
+        vouchers = self.db.fetch_all(
+            """
+            SELECT DISTINCT v.voucher_id, v.voucher_no, v.voucher_date, v.total_amount, v.narration, v.reference_type, v.reference_id
+            FROM vouchers v
+            JOIN ledger_entries le ON v.voucher_id = le.voucher_id
+            WHERE v.voucher_type = 'PAYMENT' AND le.particulars LIKE ?
+            ORDER BY v.voucher_date DESC;
+            """,
+            (f"%Supplier #{supplier_id}%",),
+        )
+
+        p_list = [dict(p) for p in purchases]
+        v_list = [dict(v) for v in vouchers]
+        ledger = []
+        for p in p_list:
+            ledger.append({
+                "type": "PURCHASE",
+                "date": p["purchase_date"],
+                "ref_no": p["invoice_no"],
+                "debit": 0.0,
+                "credit": p["net_amount"],
+                "paid": p["paid_amount"],
+                "due": p["due_amount"],
+            })
+        for v in v_list:
+            ledger.append({
+                "type": "PAYMENT",
+                "date": v["voucher_date"],
+                "ref_no": v["voucher_no"],
+                "debit": v["total_amount"],
+                "credit": 0.0,
+                "narration": v["narration"],
+            })
+        ledger.sort(key=lambda x: x["date"], reverse=True)
+
+        return {
+            "supplier": dict(supplier),
+            "purchases": p_list,
+            "payments": v_list,
+            "ledger": ledger,
+        }
+
+    def record_supplier_payment(
+        self,
+        supplier_id: int,
+        amount: float,
+        payment_mode: str = "BANK_TRANSFER",
+        payment_date: Optional[str] = None,
+        reference_no: Optional[str] = None,
+        narration: Optional[str] = None,
+    ) -> int:
+        """
+        Record payment made to a supplier/distributor:
+        1. Reduce supplier current_balance (payable).
+        2. Post double-entry Payment voucher (Debit Accounts Payable, Credit Bank/Cash).
+        """
+        if amount <= 0:
+            raise ValueError("Payment amount must be greater than 0.")
+
+        supplier = self.db.fetch_one("SELECT * FROM suppliers WHERE supplier_id = ?;", (supplier_id,))
+        if not supplier:
+            raise ValueError(f"Supplier ID {supplier_id} not found.")
+
+        today = payment_date or datetime.now().strftime("%Y-%m-%d")
+        cash_ac = self.accounting_repo.get_account_by_name("Cash in Hand")
+        bank_ac = self.accounting_repo.get_account_by_name("Bank Account")
+        pay_ac = cash_ac if payment_mode.upper() == "CASH" else bank_ac
+
+        with self.db.transaction() as conn:
+            # Reduce supplier payable balance
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE suppliers SET current_balance = current_balance - ? WHERE supplier_id = ?;",
+                (amount, supplier_id),
+            )
+
+            # Generate voucher
+            vch_no = self.accounting_repo.generate_next_voucher_no("PAYMENT")
+            entries = [
+                LedgerEntry(
+                    account_id=pay_ac.account_id,
+                    debit_amount=amount,
+                    credit_amount=0.0,
+                    particulars=f"Payment to Supplier #{supplier_id} ({supplier['supplier_name']})",
+                ),
+                LedgerEntry(
+                    account_id=pay_ac.account_id,
+                    debit_amount=0.0,
+                    credit_amount=amount,
+                    particulars=f"Paid via {payment_mode} ref: {reference_no or 'Direct'}",
+                ),
+            ]
+            voucher = Voucher(
+                voucher_no=vch_no,
+                voucher_date=today,
+                voucher_type="PAYMENT",
+                total_amount=amount,
+                narration=narration or f"Payment to {supplier['supplier_name']} - Mode: {payment_mode}",
+                reference_type="PURCHASE",
+                reference_id=supplier_id,
+                entries=entries,
+            )
+            vch_id = self.accounting_repo.create_voucher(voucher, conn=conn)
+            return vch_id
+
+    # ==================== DAILY EXPENSES & CASH CLOSING ====================
+    def record_daily_expense(
+        self,
+        category_id: int,
+        amount: float,
+        expense_date: Optional[str] = None,
+        payment_mode: str = "CASH",
+        reference_no: Optional[str] = None,
+        remarks: Optional[str] = None,
+    ) -> int:
+        """Record an operational shop expense (Shop Rent, Labor/हमाली, Tea, Electricity, Freight)."""
+        if amount <= 0:
+            raise ValueError("Expense amount must be greater than 0.")
+
+        date_str = expense_date or datetime.now().strftime("%Y-%m-%d")
+        cash_ac = self.accounting_repo.get_account_by_name("Cash in Hand")
+        bank_ac = self.accounting_repo.get_account_by_name("Bank Account")
+        pay_ac_id = cash_ac.account_id if payment_mode.upper() == "CASH" else bank_ac.account_id
+
+        expense = Expense(
+            category_id=category_id,
+            expense_date=date_str,
+            amount=amount,
+            payment_account_id=pay_ac_id,
+            reference_no=reference_no,
+            remarks=remarks,
+        )
+        return self.accounting_repo.create_expense(expense)
+
+    def get_expense_categories(self) -> List[Dict[str, Any]]:
+        """Fetch all operational expense categories."""
+        rows = self.db.fetch_all("SELECT * FROM expense_categories ORDER BY category_id ASC;")
+        return [dict(r) for r in rows]
+
+    def get_cash_drawer_reconciliation(self, date_str: str) -> Dict[str, Any]:
+        """
+        Calculates daily cash drawer breakdown:
+        Opening Cash + Cash Sales + Farmer Cash Receipts - Cash Expenses - Cash Supplier Payments = Expected Drawer Cash.
+        """
+        # 1. Cash Sales on date
+        cash_sales_row = self.db.fetch_one(
+            "SELECT COALESCE(SUM(paid_amount), 0) as total FROM sales WHERE sale_date = ? AND payment_mode IN ('CASH', 'SPLIT');",
+            (date_str,),
+        )
+        cash_sales = float(cash_sales_row["total"]) if cash_sales_row else 0.0
+
+        # 2. Farmer Receipts in Cash
+        farmer_receipts_row = self.db.fetch_one(
+            """
+            SELECT COALESCE(SUM(v.total_amount), 0) as total 
+            FROM vouchers v 
+            JOIN ledger_entries le ON v.voucher_id = le.voucher_id
+            WHERE v.voucher_date = ? AND v.voucher_type = 'RECEIPT' AND v.narration LIKE '%CASH%';
+            """,
+            (date_str,),
+        )
+        farmer_receipts = float(farmer_receipts_row["total"]) if farmer_receipts_row else 0.0
+
+        # 3. Cash Expenses
+        cash_exp_row = self.db.fetch_one(
+            """
+            SELECT COALESCE(SUM(amount), 0) as total 
+            FROM expenses 
+            WHERE expense_date = ? AND payment_account_id = 1;
+            """,
+            (date_str,),
+        )
+        cash_expenses = float(cash_exp_row["total"]) if cash_exp_row else 0.0
+
+        # 4. Cash Supplier Payments
+        cash_supp_row = self.db.fetch_one(
+            """
+            SELECT COALESCE(SUM(v.total_amount), 0) as total 
+            FROM vouchers v 
+            WHERE v.voucher_date = ? AND v.voucher_type = 'PAYMENT' AND v.narration LIKE '%CASH%';
+            """,
+            (date_str,),
+        )
+        cash_supp_payments = float(cash_supp_row["total"]) if cash_supp_row else 0.0
+
+        # Opening balance constant or estimate
+        opening_cash = 5000.0  # standard base float
+        net_inflow = (cash_sales + farmer_receipts) - (cash_expenses + cash_supp_payments)
+        expected_cash = opening_cash + net_inflow
+
+        return {
+            "date": date_str,
+            "opening_cash": opening_cash,
+            "cash_sales": cash_sales,
+            "farmer_cash_receipts": farmer_receipts,
+            "total_cash_inflow": cash_sales + farmer_receipts,
+            "cash_expenses": cash_expenses,
+            "cash_supplier_payments": cash_supp_payments,
+            "total_cash_outflow": cash_expenses + cash_supp_payments,
+            "net_cash_flow": net_inflow,
+            "expected_drawer_cash": max(0.0, expected_cash),
+            "expected_cash_in_hand": max(0.0, expected_cash),
+        }
+
